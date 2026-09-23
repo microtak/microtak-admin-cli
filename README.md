@@ -29,15 +29,18 @@ microtak-admin-cli enroll \
   --out-cert my-device.pem --out-key my-device.key
 ```
 
-Add `--token <token>` if the server has `enrollment_requires_token`
-enabled (see below for minting one).
+Add `--token <token>` if the server is locked down (see below for minting
+one) — by default (`enrollment_mode = "auto"`), a fresh server accepts
+enrollment with no token until its configured admin device has enrolled,
+then requires one for everyone else from that moment on, live, no restart.
 
 ## Managing enrollment tokens
 
 Requires an already-enrolled admin device's cert/key and the server's CA
-cert — see `microtak-server`'s own docs for the enrollment-lockdown
-bootstrap order (you enroll your admin device *before* turning
-`enrollment_requires_token` on).
+cert — enroll your admin device first, while the server is still open (see
+`microtak-server`'s own `docs/ARCHITECTURE.md` "Enrollment lockdown / admin
+API" section for how `enrollment_mode = "auto"` locks down the moment that
+device exists).
 
 ```sh
 export MICROTAK_ADMIN_SERVER=https://microtak.example.com:8443
