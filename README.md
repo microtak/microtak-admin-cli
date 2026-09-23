@@ -61,6 +61,31 @@ microtak-admin-cli token list
 microtak-admin-cli token revoke <token>
 ```
 
+### Printable handouts (QR code + manual enrollment steps)
+
+For handing a token to someone who isn't at a terminal, mint one with
+`--pdf` to also write a one-page PDF with the QR code and numbered,
+type-it-by-hand instructions (for when scanning isn't an option):
+
+```sh
+microtak-admin-cli token mint --note "for jz_pixel" \
+  --enrollment-url http://microtak.example.com:8446 --pdf handout.pdf
+```
+
+To regenerate a handout for a token you already have (e.g. from `token
+list`), without minting a new one or contacting the server at all:
+
+```sh
+microtak-admin-cli token pdf <token> \
+  --enrollment-url http://microtak.example.com:8446 --out handout.pdf
+```
+
+`token pdf` doesn't check the server, so it has no way to know the token's
+real status or expiry — the handout shows "unknown" for expiry in that
+case rather than guessing. Fonts (Liberation Sans, SIL Open Font License —
+see `assets/fonts/LICENSE-OFL.txt`) are embedded in the binary at compile
+time, so PDF generation needs no font files on the machine running it.
+
 Every subcommand's connection flags (`--server`/`--cert`/`--key`/`--ca`)
 can be set via the environment variables above instead of repeating them
 on every invocation.

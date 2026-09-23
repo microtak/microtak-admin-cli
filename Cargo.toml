@@ -12,6 +12,8 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
+genpdf = { version = "0.2", features = ["images"] }
+image = "0.23"
 qrcode = { version = "0.14", default-features = false }
 rcgen = "0.14"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

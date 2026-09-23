@@ -68,8 +68,9 @@ pub struct EnrollArgs {
     /// everywhere else in MicroTAK.
     #[arg(long)]
     pub cn: String,
-    /// An enrollment invite token, required if the server has
-    /// `enrollment_requires_token` enabled.
+    /// An enrollment invite token, required once the server has locked
+    /// enrollment down (the default `enrollment_mode = "auto"` does this
+    /// automatically once its configured admin device has enrolled).
     #[arg(long)]
     pub token: Option<String>,
     /// Where to write the signed certificate (PEM).
@@ -100,9 +101,15 @@ pub enum TokenCommand {
         #[arg(long)]
         qr: bool,
         /// The enrollment endpoint URL to embed in the QR code payload.
-        /// Only used with --qr.
+        /// Only used with --qr and/or --pdf.
         #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
         enrollment_url: Option<String>,
+        /// Also write a printable enrollment handout PDF (QR code plus
+        /// manual, type-it-by-hand enrollment steps) to this path.
+        /// Requires --enrollment-url, since the handout needs a real URL
+        /// to put in both the QR code and the manual instructions.
+        #[arg(long, value_name = "PATH")]
+        pdf: Option<String>,
     },
     /// List all enrollment tokens and their status.
     List {
@@ -114,6 +121,22 @@ pub enum TokenCommand {
         #[command(flatten)]
         conn: AdminConnection,
         token: String,
+    },
+    /// Generate a printable enrollment handout PDF for a token you already
+    /// have (e.g. from `token list`), without minting a new one or
+    /// contacting the server at all.
+    Pdf {
+        token: String,
+        /// The enrollment endpoint URL to embed in the QR code and the
+        /// manual enrollment steps.
+        #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
+        enrollment_url: String,
+        /// A free-text note to show on the handout.
+        #[arg(long)]
+        note: Option<String>,
+        /// Where to write the PDF.
+        #[arg(long, default_value = "enrollment.pdf")]
+        out: String,
     },
 }
 

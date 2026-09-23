@@ -8,9 +8,10 @@
 mod cli;
 mod client;
 mod enroll;
+mod pdf;
 mod qr;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{Cli, Command, MissionCommand, TokenCommand};
@@ -33,8 +34,10 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             note,
             qr,
             enrollment_url,
+            pdf,
         } => {
             let client = client::build_client(&conn)?;
+            let note_for_pdf = note.clone();
             let token = client::mint_token(&client, &conn, expires_in_secs, note).await?;
             println!("{token}");
             if qr {
@@ -43,6 +46,23 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
                     .unwrap_or("<set --enrollment-url to embed it in the QR code>");
                 let payload = qr::enrollment_payload(url, &token);
                 qr::print_terminal_qr(&payload)?;
+            }
+            if let Some(out_path) = pdf {
+                let url = enrollment_url
+                    .as_deref()
+                    .context("--pdf requires --enrollment-url so the handout has a real URL to show")?;
+                let expires_at = match expires_in_secs {
+                    Some(secs) => pdf::Expiry::At(format_unix(now_unix() + secs)),
+                    None => pdf::Expiry::Never,
+                };
+                let info = pdf::HandoutInfo {
+                    token: &token,
+                    enrollment_url: url,
+                    note: note_for_pdf.as_deref(),
+                    expires_at,
+                };
+                pdf::write_enrollment_pdf(&info, &out_path)?;
+                println!("Wrote enrollment handout to {out_path}");
             }
             Ok(())
         }
@@ -58,7 +78,28 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             println!("Revoked.");
             Ok(())
         }
+        TokenCommand::Pdf { token, enrollment_url, note, out } => {
+            let info = pdf::HandoutInfo {
+                token: &token,
+                enrollment_url: &enrollment_url,
+                note: note.as_deref(),
+                // No server round trip here (that's the point of this
+                // subcommand -- see its help text), so real status/expiry
+                // isn't known; shown plainly rather than guessed at.
+                expires_at: pdf::Expiry::Unknown,
+            };
+            pdf::write_enrollment_pdf(&info, &out)?;
+            println!("Wrote enrollment handout to {out}");
+            Ok(())
+        }
     }
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 async fn run_mission_command(command: MissionCommand) -> Result<()> {
