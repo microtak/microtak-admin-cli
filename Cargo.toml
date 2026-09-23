@@ -1,0 +1,21 @@
+[package]
+name = "microtak-admin-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for managing a MicroTAK server: device enrollment, enrollment invite tokens, and mission roles"
+license = "AGPL-3.0-or-later"
+
+[[bin]]
+name = "microtak-admin-cli"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+qrcode = { version = "0.14", default-features = false }
+rcgen = "0.14"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = { version = "0.3", features = ["formatting"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
