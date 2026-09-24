@@ -95,6 +95,26 @@ yet (e.g. connecting directly to an IP in a lab/grid-down setting before
 DNS exists), use `--resolve HOST:PORT:ADDRESS` (the same syntax `curl
 --resolve` uses) to override resolution for just that connection.
 
+## Managing password accounts
+
+Some clients (e.g. [CloudTAK](https://github.com/dfpc-coe/CloudTAK)) expect
+real username/password login rather than a bare invite token — mint a
+password account for them instead:
+
+```sh
+# Omit --password to have the server generate one, printed once
+microtak-admin-cli user mint cloudtak-alice
+
+microtak-admin-cli user list
+microtak-admin-cli user revoke cloudtak-alice
+```
+
+That account can then log in via the server's `POST /oauth/token` and
+self-enroll a device certificate using `Authorization: Basic` on the
+enrollment endpoint — see `microtak-server`'s own
+`docs/ARCHITECTURE.md` for the full wire contract. A revoked account can no
+longer do either, even with the correct password.
+
 ## Managing mission roles
 
 ```sh

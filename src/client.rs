@@ -111,6 +111,67 @@ pub async fn revoke_token(client: &reqwest::Client, conn: &AdminConnection, toke
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UserInfo {
+    pub username: String,
+    pub created_at_unix: i64,
+    pub revoked: bool,
+}
+
+#[derive(Serialize)]
+struct MintUserRequest {
+    username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    password: Option<String>,
+}
+
+/// Mint a new password account. If `password` is `None`, the server
+/// generates one and returns it -- this function returns whatever password
+/// is now actually in effect either way, since the caller needs to display
+/// it (server-generated case) or already knows it (explicit case).
+pub async fn mint_user(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    username: &str,
+    password: Option<String>,
+) -> Result<String> {
+    let response = client
+        .post(format!("{}/Marti/api/admin/users", conn.server))
+        .json(&MintUserRequest {
+            username: username.to_string(),
+            password,
+        })
+        .send()
+        .await
+        .context("calling the admin API to mint a user")?;
+    let response = check_status(response).await?;
+    let body: serde_json::Value = response.json().await.context("parsing mint response")?;
+    body["password"]
+        .as_str()
+        .map(str::to_string)
+        .context("mint response had no 'password' field")
+}
+
+pub async fn list_users(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<UserInfo>> {
+    let response = client
+        .get(format!("{}/Marti/api/admin/users", conn.server))
+        .send()
+        .await
+        .context("calling the admin API to list users")?;
+    let response = check_status(response).await?;
+    response.json().await.context("parsing user list response")
+}
+
+pub async fn revoke_user(client: &reqwest::Client, conn: &AdminConnection, username: &str) -> Result<()> {
+    let response = client
+        .delete(format!("{}/Marti/api/admin/users/{}", conn.server, urlencode(username)))
+        .send()
+        .await
+        .context("calling the admin API to revoke a user")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Mission {
     pub name: String,
     pub description: Option<String>,

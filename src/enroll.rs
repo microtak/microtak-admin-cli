@@ -42,11 +42,12 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
     }
 
     let body: serde_json::Value = response.json().await.context("parsing enrollment response")?;
-    let cert_pem = body["signedCert"]
+    let bare_cert = body["signedCert"]
         .as_str()
         .context("enrollment response had no 'signedCert' field")?;
+    let cert_pem = wrap_pem_certificate(bare_cert);
 
-    std::fs::write(&args.out_cert, cert_pem)
+    std::fs::write(&args.out_cert, &cert_pem)
         .with_context(|| format!("writing certificate to {}", args.out_cert))?;
     std::fs::write(&args.out_key, key.serialize_pem())
         .with_context(|| format!("writing key to {}", args.out_key))?;
@@ -64,4 +65,26 @@ fn urlencoding_minimal(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_ascii_alphanumeric())
         .collect()
+}
+
+/// Re-armor a bare-base64 `signedCert` value into full PEM. Real Marti
+/// wire format: the server strips PEM armor before responding (see
+/// microtak-server's `marti::enrollment` module doc comment), matching
+/// real TAK-Server/node-tak client behavior, which re-wraps it itself
+/// before use -- so do the same here.
+fn wrap_pem_certificate(bare_base64: &str) -> String {
+    format!("-----BEGIN CERTIFICATE-----\n{bare_base64}\n-----END CERTIFICATE-----\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wraps_a_bare_base64_cert_into_valid_pem() {
+        let wrapped = wrap_pem_certificate("bm90LWEtcmVhbC1jZXJ0");
+        assert!(wrapped.starts_with("-----BEGIN CERTIFICATE-----\n"));
+        assert!(wrapped.ends_with("-----END CERTIFICATE-----\n"));
+        assert!(wrapped.contains("bm90LWEtcmVhbC1jZXJ0"));
+    }
 }

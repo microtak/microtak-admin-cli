@@ -14,7 +14,7 @@ mod qr;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use cli::{Cli, Command, MissionCommand, TokenCommand};
+use cli::{Cli, Command, MissionCommand, TokenCommand, UserCommand};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,7 +22,43 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Enroll(args) => enroll::run(args).await,
         Command::Token { command } => run_token_command(command).await,
+        Command::User { command } => run_user_command(command).await,
         Command::Mission { command } => run_mission_command(command).await,
+    }
+}
+
+async fn run_user_command(command: UserCommand) -> Result<()> {
+    match command {
+        UserCommand::Mint { conn, username, password } => {
+            let client = client::build_client(&conn)?;
+            let password = client::mint_user(&client, &conn, &username, password).await?;
+            println!("Minted user '{username}' with password: {password}");
+            Ok(())
+        }
+        UserCommand::List { conn } => {
+            let client = client::build_client(&conn)?;
+            let users = client::list_users(&client, &conn).await?;
+            print_user_table(&users);
+            Ok(())
+        }
+        UserCommand::Revoke { conn, username } => {
+            let client = client::build_client(&conn)?;
+            client::revoke_user(&client, &conn, &username).await?;
+            println!("Revoked.");
+            Ok(())
+        }
+    }
+}
+
+fn print_user_table(users: &[client::UserInfo]) {
+    if users.is_empty() {
+        println!("No user accounts.");
+        return;
+    }
+    println!("{:<30} {:<10} CREATED", "USERNAME", "STATUS");
+    for user in users {
+        let status = if user.revoked { "revoked" } else { "active" };
+        println!("{:<30} {:<10} {}", user.username, status, format_unix(user.created_at_unix));
     }
 }
 

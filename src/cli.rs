@@ -28,7 +28,7 @@ pub struct AdminConnection {
     #[arg(long, env = "MICROTAK_ADMIN_KEY")]
     pub key: String,
     /// Path to the server's CA certificate (PEM) -- from
-    /// `GET /Marti/api/tls/config` on first setup.
+    /// `GET /Marti/api/tls/ca.pem` on first setup.
     #[arg(long, env = "MICROTAK_ADMIN_CA")]
     pub ca: String,
     /// Resolve the server URL's hostname to this address instead of using
@@ -50,6 +50,13 @@ pub enum Command {
     Token {
         #[command(subcommand)]
         command: TokenCommand,
+    },
+    /// Manage password accounts (for clients that expect real
+    /// username/password login, e.g. CloudTAK, rather than a bare
+    /// enrollment token).
+    User {
+        #[command(subcommand)]
+        command: UserCommand,
     },
     /// Manage mission roles.
     Mission {
@@ -137,6 +144,31 @@ pub enum TokenCommand {
         /// Where to write the PDF.
         #[arg(long, default_value = "enrollment.pdf")]
         out: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum UserCommand {
+    /// Mint a new password account. Omit --password to have the server
+    /// generate a random one, printed once.
+    Mint {
+        #[command(flatten)]
+        conn: AdminConnection,
+        username: String,
+        #[arg(long)]
+        password: Option<String>,
+    },
+    /// List all password accounts and their status.
+    List {
+        #[command(flatten)]
+        conn: AdminConnection,
+    },
+    /// Revoke a password account -- it can no longer log in or self-enroll
+    /// a device cert, even with the correct password.
+    Revoke {
+        #[command(flatten)]
+        conn: AdminConnection,
+        username: String,
     },
 }
 
