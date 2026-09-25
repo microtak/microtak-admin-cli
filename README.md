@@ -16,6 +16,9 @@ cargo test
 
 The binary is named `microtak-admin-cli`.
 
+`scripts/build.sh` runs the same build/test/clippy steps CI does (add
+`--nix` to also run `nix flake check`); see `scripts/build.sh --help`.
+
 ## Enrolling a device
 
 Talks to the server's plain (unauthenticated by design) enrollment
