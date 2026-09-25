@@ -1,6 +1,6 @@
 [package]
 name = "microtak-admin-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "CLI for managing a MicroTAK server: device enrollment, enrollment invite tokens, and mission roles"
 license = "AGPL-3.0-or-later"
