@@ -32,18 +32,30 @@ microtak-admin-cli enroll \
   --out-cert my-device.pem --out-key my-device.key
 ```
 
-Add `--token <token>` if the server is locked down (see below for minting
-one) — by default (`enrollment_mode = "auto"`), a fresh server accepts
-enrollment with no token until its configured admin device has enrolled,
-then requires one for everyone else from that moment on, live, no restart.
+Add `--token <token>`: by default (`enrollment_mode = "auto"`) the server
+is locked from its first start, so every device needs an invite token (see
+below for minting one) — except the admin device, which enrolls once with
+the server's one-time **bootstrap token**. The server writes that token to
+`data_dir/bootstrap-token` on first start (with Docker: `docker compose exec
+microtak-server cat data/bootstrap-token`):
+
+```sh
+microtak-admin-cli enroll \
+  --enrollment-url http://microtak.example.com:8446 \
+  --cn admin --token "$(cat bootstrap-token)" \
+  --out-cert admin.pem --out-key admin.key
+```
+
+`--cn` must match the server's `admin_common_name` (`"admin"` by default).
+A token can only create a *new* identity; re-enrolling an existing one
+needs that identity's own password account.
 
 ## Managing enrollment tokens
 
 Requires an already-enrolled admin device's cert/key and the server's CA
-cert — enroll your admin device first, while the server is still open (see
-`microtak-server`'s own `docs/ARCHITECTURE.md` "Enrollment lockdown / admin
-API" section for how `enrollment_mode = "auto"` locks down the moment that
-device exists).
+cert — enroll your admin device first, with the bootstrap token (above; see
+`microtak-server`'s own `docs/ARCHITECTURE.md` "Enrollment security
+hardening" section).
 
 ```sh
 export MICROTAK_ADMIN_SERVER=https://microtak.example.com:8443
