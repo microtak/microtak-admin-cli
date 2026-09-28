@@ -57,6 +57,10 @@ pub struct EnrollmentToken {
     pub created_at_unix: i64,
     pub expires_at_unix: Option<i64>,
     pub note: Option<String>,
+    /// The device name the token is bound to, if any (older servers don't
+    /// send this field).
+    #[serde(default)]
+    pub common_name: Option<String>,
     pub used: bool,
     pub used_by_common_name: Option<String>,
     pub revoked: bool,
@@ -68,6 +72,8 @@ struct MintTokenRequest {
     expires_in_secs: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
+    #[serde(rename = "commonName", skip_serializing_if = "Option::is_none")]
+    common_name: Option<String>,
 }
 
 pub async fn mint_token(
@@ -75,10 +81,15 @@ pub async fn mint_token(
     conn: &AdminConnection,
     expires_in_secs: Option<i64>,
     note: Option<String>,
+    common_name: Option<String>,
 ) -> Result<String> {
     let response = client
         .post(format!("{}/Marti/api/admin/enrollmentTokens", conn.server))
-        .json(&MintTokenRequest { expires_in_secs, note })
+        .json(&MintTokenRequest {
+            expires_in_secs,
+            note,
+            common_name,
+        })
         .send()
         .await
         .context("calling the admin API to mint a token")?;

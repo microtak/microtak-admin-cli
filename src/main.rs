@@ -11,7 +11,7 @@ mod enroll;
 mod pdf;
 mod qr;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 
 use cli::{Cli, Command, MissionCommand, TokenCommand, UserCommand};
@@ -68,37 +68,51 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             conn,
             expires_in_secs,
             note,
+            cn,
+            link,
             qr,
-            enrollment_url,
             pdf,
         } => {
+            // Validate everything the QR/PDF needs *before* minting, so a
+            // typo doesn't leave an orphaned token behind.
+            let wants_link = qr || pdf.is_some();
+            if wants_link {
+                if cn.is_none() {
+                    bail!("--qr/--pdf need --cn: the token is bound to that device name, which the QR code carries");
+                }
+                if link.enrollment_url.is_none() {
+                    bail!("--qr/--pdf need --enrollment-url: where devices reach the server");
+                }
+            }
             let client = client::build_client(&conn)?;
             let note_for_pdf = note.clone();
-            let token = client::mint_token(&client, &conn, expires_in_secs, note).await?;
+            let token =
+                client::mint_token(&client, &conn, expires_in_secs, note, cn.clone()).await?;
             println!("{token}");
-            if qr {
-                let url = enrollment_url
-                    .as_deref()
-                    .unwrap_or("<set --enrollment-url to embed it in the QR code>");
-                let payload = qr::enrollment_payload(url, &token);
-                qr::print_terminal_qr(&payload)?;
-            }
-            if let Some(out_path) = pdf {
-                let url = enrollment_url
-                    .as_deref()
-                    .context("--pdf requires --enrollment-url so the handout has a real URL to show")?;
-                let expires_at = match expires_in_secs {
-                    Some(secs) => pdf::Expiry::At(format_unix(now_unix() + secs)),
-                    None => pdf::Expiry::Never,
-                };
-                let info = pdf::HandoutInfo {
-                    token: &token,
-                    enrollment_url: url,
-                    note: note_for_pdf.as_deref(),
-                    expires_at,
-                };
-                pdf::write_enrollment_pdf(&info, &out_path)?;
-                println!("Wrote enrollment handout to {out_path}");
+            if wants_link {
+                let enrollment_link = qr::EnrollmentLink::from_enrollment_url(
+                    link.enrollment_url.as_deref().unwrap_or_default(),
+                    cn.as_deref().unwrap_or_default(),
+                    &token,
+                    link.streaming_port,
+                    link.api_port,
+                )?;
+                if qr {
+                    qr::print_terminal_qr(&enrollment_link.to_uri())?;
+                }
+                if let Some(out_path) = pdf {
+                    let expires_at = match expires_in_secs {
+                        Some(secs) => pdf::Expiry::At(format_unix(now_unix() + secs)),
+                        None => pdf::Expiry::Never,
+                    };
+                    let info = pdf::HandoutInfo {
+                        link: &enrollment_link,
+                        note: note_for_pdf.as_deref(),
+                        expires_at,
+                    };
+                    pdf::write_enrollment_pdf(&info, &out_path)?;
+                    println!("Wrote enrollment handout to {out_path}");
+                }
             }
             Ok(())
         }
@@ -114,10 +128,19 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             println!("Revoked.");
             Ok(())
         }
-        TokenCommand::Pdf { token, enrollment_url, note, out } => {
+        TokenCommand::Pdf { token, cn, link, note, out } => {
+            let enrollment_url = link
+                .enrollment_url
+                .context("--enrollment-url is required: where devices reach the server")?;
+            let enrollment_link = qr::EnrollmentLink::from_enrollment_url(
+                &enrollment_url,
+                &cn,
+                &token,
+                link.streaming_port,
+                link.api_port,
+            )?;
             let info = pdf::HandoutInfo {
-                token: &token,
-                enrollment_url: &enrollment_url,
+                link: &enrollment_link,
                 note: note.as_deref(),
                 // No server round trip here (that's the point of this
                 // subcommand -- see its help text), so real status/expiry
@@ -180,8 +203,8 @@ fn print_token_table(tokens: &[client::EnrollmentToken]) {
         return;
     }
     println!(
-        "{:<66} {:<10} {:<20} {:<20} {:<20} NOTE",
-        "TOKEN", "STATUS", "USED BY", "CREATED", "EXPIRES"
+        "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} NOTE",
+        "TOKEN", "STATUS", "FOR", "USED BY", "CREATED", "EXPIRES"
     );
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -202,9 +225,10 @@ fn print_token_table(tokens: &[client::EnrollmentToken]) {
             None => "never".to_string(),
         };
         println!(
-            "{:<66} {:<10} {:<20} {:<20} {:<20} {}",
+            "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} {}",
             token.token,
             status,
+            token.common_name.as_deref().unwrap_or("any"),
             token.used_by_common_name.as_deref().unwrap_or("-"),
             format_unix(token.created_at_unix),
             expires,

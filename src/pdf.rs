@@ -44,8 +44,7 @@ impl std::fmt::Display for Expiry {
 }
 
 pub struct HandoutInfo<'a> {
-    pub token: &'a str,
-    pub enrollment_url: &'a str,
+    pub link: &'a crate::qr::EnrollmentLink,
     pub note: Option<&'a str>,
     pub expires_at: Expiry,
 }
@@ -100,26 +99,36 @@ pub fn write_enrollment_pdf(info: &HandoutInfo, out_path: &str) -> Result<()> {
     );
     doc.push(Break::new(1.0));
 
+    let link = info.link;
+    doc.push(Paragraph::new(format!("Device name: {}", link.username)));
     doc.push(Paragraph::new(format!(
-        "Enrollment URL: {}",
-        info.enrollment_url
+        "Server: {} (enrollment port {}, streaming port {})",
+        link.host, link.enrollment_port, link.streaming_port
     )));
-    doc.push(Paragraph::new(format!("Token: {}", info.token)));
+    doc.push(Paragraph::new(format!("Token: {}", link.token)));
     doc.push(Paragraph::new(format!("Expires: {}", info.expires_at)));
     if let Some(note) = info.note {
         doc.push(Paragraph::new(format!("Note: {note}")));
     }
     doc.push(Break::new(1.0));
 
-    let payload = crate::qr::enrollment_payload(info.enrollment_url, info.token);
-    let qr_image = rasterize_qr(&payload)?;
+    let qr_image = rasterize_qr(&link.to_uri())?;
     doc.push(
         Image::from_dynamic_image(qr_image)
             .context("embedding QR code image")?
             .with_alignment(Alignment::Center)
-            .with_scale(Scale::new(0.4, 0.4)),
+            // ~6 cm printed: the `tak://` link with a 256-bit token is a
+            // dense code, and at the old 0.4 scale (~1.6 cm) a phone camera
+            // couldn't reliably read it off paper.
+            .with_scale(Scale::new(1.5, 1.5)),
     );
-    doc.push(Paragraph::new("Scan with a compatible enrollment tool.").styled(Style::new().italic()));
+    doc.push(
+        Paragraph::new(
+            "Scan with the TAK client (ATAK, OmniTAK, ...) -- it enrolls and connects on its own. \
+             The token works once, for this device name only.",
+        )
+        .styled(Style::new().italic()),
+    );
     doc.push(Break::new(1.0));
 
     doc.push(
@@ -129,23 +138,20 @@ pub fn write_enrollment_pdf(info: &HandoutInfo, out_path: &str) -> Result<()> {
     doc.push(Break::new(0.5));
     doc.push(
         OrderedList::new()
-            .element(Paragraph::new(
-                "Install microtak-admin-cli on the device (or a machine that can reach it): \
-                 https://github.com/microtak/microtak-admin-cli",
-            ))
             .element(Paragraph::new(format!(
-                "Run: microtak-admin-cli enroll --enrollment-url {} --cn <device-name> \
-                 --token {} --out-cert device.pem --out-key device.key",
-                info.enrollment_url, info.token,
+                "In the TAK client, add a server with host {} -- the bare address, without \
+                 https:// or a port.",
+                link.host
             )))
-            .element(Paragraph::new(
-                "Replace <device-name> with a unique name for this device -- it becomes its \
-                 identity everywhere in MicroTAK.",
-            ))
-            .element(Paragraph::new(
-                "Configure your TAK client (ATAK/iTAK/WinTAK) with the resulting \
-                 device.pem/device.key and the server's CA certificate.",
-            )),
+            .element(Paragraph::new(format!(
+                "Enrollment port {}, streaming port {} with TLS on; if the client asks \
+                 whether to trust the server's certificate, accept it.",
+                link.enrollment_port, link.streaming_port
+            )))
+            .element(Paragraph::new(format!(
+                "Username: {} -- Password: the token above.",
+                link.username
+            ))),
     );
 
     doc.render_to_file(out_path).context("writing PDF file")?;
@@ -162,7 +168,8 @@ mod tests {
     /// are non-white somewhere" assertion would miss.
     #[test]
     fn rasterize_qr_produces_a_real_dark_on_light_code() {
-        let image = rasterize_qr("microtak-enroll:?url=http://server:8446&token=abc123").unwrap();
+        let image =
+            rasterize_qr("tak://com.atakmap.app/enroll?host=server&username=u&token=abc123").unwrap();
         let gray = image.to_luma8();
 
         // The finder pattern occupies the modules right after the quiet
@@ -189,10 +196,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let out_path = dir.join("handout.pdf");
 
+        let link = crate::qr::EnrollmentLink::from_enrollment_url(
+            "https://microtak.example.com:8446",
+            "pixel",
+            "abc123",
+            8089,
+            8443,
+        )
+        .unwrap();
         let info = HandoutInfo {
-            token: "abc123",
-            enrollment_url: "http://microtak.example.com:8446",
-            note: Some("for jz_pixel"),
+            link: &link,
+            note: Some("for the pixel"),
             expires_at: Expiry::At("2026-10-01T00:00:00Z".to_string()),
         };
         write_enrollment_pdf(&info, out_path.to_str().unwrap()).unwrap();
