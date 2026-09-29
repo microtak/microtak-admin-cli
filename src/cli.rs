@@ -67,17 +67,33 @@ pub enum Command {
 
 #[derive(Args)]
 pub struct EnrollArgs {
-    /// Base URL of the plain (unauthenticated) enrollment endpoint, e.g.
-    /// http://microtak.example.com:8446
+    /// Base URL of the enrollment endpoint -- HTTPS only, e.g.
+    /// https://microtak.example.com:8446
     #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
     pub enrollment_url: String,
+    /// The server's CA certificate (PEM) to verify the enrollment endpoint
+    /// against -- `ca-cert.pem` from the server's data directory. Not
+    /// needed if the endpoint has a publicly-trusted certificate (e.g.
+    /// Let's Encrypt), in which case the system's roots are used.
+    #[arg(long, env = "MICROTAK_ADMIN_CA")]
+    pub ca: Option<String>,
+    /// Resolve the enrollment URL's hostname to this address instead of
+    /// DNS -- curl's `--resolve` syntax (`hostname:port:address`). Handy to
+    /// use a name the server certificate carries (e.g. `microtak-server`)
+    /// while connecting to an IP address.
+    #[arg(long, value_name = "HOST:PORT:ADDRESS")]
+    pub resolve: Option<String>,
+    /// Also save the CA certificate returned by the server (PEM) here --
+    /// what the admin commands' `--ca` needs.
+    #[arg(long)]
+    pub out_ca: Option<String>,
     /// The Common Name to enroll as -- this becomes the device's identity
     /// everywhere else in MicroTAK.
     #[arg(long)]
     pub cn: String,
-    /// An enrollment invite token, required once the server has locked
-    /// enrollment down (the default `enrollment_mode = "auto"` does this
-    /// automatically once its configured admin device has enrolled).
+    /// An enrollment invite token -- required by the default
+    /// `enrollment_mode = "auto"`. For the admin device, the server's
+    /// one-time bootstrap token (`data_dir/bootstrap-token`).
     #[arg(long)]
     pub token: Option<String>,
     /// Where to write the signed certificate (PEM).

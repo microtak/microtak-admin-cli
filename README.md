@@ -21,30 +21,45 @@ The binary is named `microtak-admin-cli`.
 
 ## Enrolling a device
 
-Talks to the server's plain (unauthenticated by design) enrollment
-endpoint — generates a keypair and CSR, submits it, and saves the signed
-certificate and key:
+Talks to the server's enrollment endpoint — **HTTPS only**, no client
+certificate (the device has none yet) — generates a keypair and CSR,
+submits it, and saves the signed certificate and key. The endpoint is
+verified against `--ca`, the server's own CA certificate (`ca-cert.pem` in
+its data directory); leave `--ca` out only if the endpoint has a
+publicly-trusted certificate (e.g. Let's Encrypt). Verification is never
+skipped, and `http://` URLs are refused.
 
 ```sh
 microtak-admin-cli enroll \
-  --enrollment-url http://microtak.example.com:8446 \
-  --cn my-device \
+  --enrollment-url https://microtak.example.com:8446 --ca ca.pem \
+  --cn my-device --token <invite token> \
   --out-cert my-device.pem --out-key my-device.key
 ```
 
-Add `--token <token>`: by default (`enrollment_mode = "auto"`) the server
-is locked from its first start, so every device needs an invite token (see
-below for minting one) — except the admin device, which enrolls once with
-the server's one-time **bootstrap token**. The server writes that token to
-`data_dir/bootstrap-token` on first start (with Docker: `docker compose exec
-microtak-server cat data/bootstrap-token`):
+By default (`enrollment_mode = "auto"`) the server is locked from its first
+start, so every device needs an invite token (see below for minting one) —
+except the admin device, which enrolls once with the server's one-time
+**bootstrap token**. The server writes that token, next to its CA
+certificate, to its data directory on first start:
 
 ```sh
+# with Docker:
+docker compose exec microtak-server cat data/bootstrap-token
+docker compose exec microtak-server cat data/ca-cert.pem > ca.pem
+
 microtak-admin-cli enroll \
-  --enrollment-url http://microtak.example.com:8446 \
+  --enrollment-url https://microtak.example.com:8446 --ca ca.pem \
   --cn admin --token "$(cat bootstrap-token)" \
   --out-cert admin.pem --out-key admin.key
 ```
+
+The URL's host name must be one the server certificate names — its
+`server_common_name` (`microtak-server`), its interface addresses, or its
+configured `server_names`. To connect by an address the certificate doesn't
+name, use `--resolve` with a name it does, e.g.
+`--enrollment-url https://microtak-server:8446 --resolve
+microtak-server:8446:192.168.1.10`. `--out-ca ca.pem` saves the CA returned
+in the enrollment response, for the admin commands' `--ca`.
 
 `--cn` must match the server's `admin_common_name` (`"admin"` by default).
 A token can only create a *new* identity; re-enrolling an existing one
@@ -67,7 +82,7 @@ export MICROTAK_ADMIN_CA=ca.pem
 # a QR code (encoding a microtak-enroll: URI with the enrollment URL and
 # token together, so a device operator can scan instead of copy-pasting)
 microtak-admin-cli token mint --expires-in-secs 86400 --note "for jz_pixel" \
-  --qr --enrollment-url http://microtak.example.com:8446
+  --qr --enrollment-url https://microtak.example.com:8446
 
 # List all tokens and their status (active/used/expired/revoked)
 microtak-admin-cli token list
@@ -84,7 +99,7 @@ type-it-by-hand instructions (for when scanning isn't an option):
 
 ```sh
 microtak-admin-cli token mint --note "for jz_pixel" \
-  --enrollment-url http://microtak.example.com:8446 --pdf handout.pdf
+  --enrollment-url https://microtak.example.com:8446 --pdf handout.pdf
 ```
 
 To regenerate a handout for a token you already have (e.g. from `token
@@ -92,7 +107,7 @@ list`), without minting a new one or contacting the server at all:
 
 ```sh
 microtak-admin-cli token pdf <token> \
-  --enrollment-url http://microtak.example.com:8446 --out handout.pdf
+  --enrollment-url https://microtak.example.com:8446 --out handout.pdf
 ```
 
 `token pdf` doesn't check the server, so it has no way to know the token's

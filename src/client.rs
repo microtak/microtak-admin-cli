@@ -32,7 +32,7 @@ pub fn build_client(conn: &AdminConnection) -> Result<reqwest::Client> {
 
 /// Parse curl's `--resolve HOST:PORT:ADDRESS` syntax into what
 /// `reqwest::ClientBuilder::resolve` wants (a hostname and a `SocketAddr`).
-fn parse_resolve(spec: &str) -> Result<(String, SocketAddr)> {
+pub(crate) fn parse_resolve(spec: &str) -> Result<(String, SocketAddr)> {
     let mut parts = spec.splitn(3, ':');
     let (Some(host), Some(port), Some(address)) = (parts.next(), parts.next(), parts.next()) else {
         bail!("--resolve must be in the form HOST:PORT:ADDRESS, got '{spec}'");
