@@ -61,9 +61,56 @@ pub struct EnrollmentToken {
     /// send this field).
     #[serde(default)]
     pub common_name: Option<String>,
+    /// Groups the enrolling device is added to (older servers omit this).
+    #[serde(default)]
+    pub groups: Vec<GroupGrant>,
     pub used: bool,
     pub used_by_common_name: Option<String>,
     pub revoked: bool,
+}
+
+/// A group membership handed out at enrollment.
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct GroupGrant {
+    pub name: String,
+    /// `IN`, `OUT` or `BOTH`.
+    pub membership: String,
+}
+
+/// Group lists as the server's admin API takes them.
+#[derive(Serialize, Default, Debug, PartialEq)]
+pub struct GroupLists {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<String>,
+    #[serde(rename = "groupsIn", skip_serializing_if = "Vec::is_empty")]
+    pub groups_in: Vec<String>,
+    #[serde(rename = "groupsOut", skip_serializing_if = "Vec::is_empty")]
+    pub groups_out: Vec<String>,
+}
+
+impl From<&crate::cli::GroupArgs> for GroupLists {
+    fn from(args: &crate::cli::GroupArgs) -> Self {
+        GroupLists {
+            groups: args.groups.clone(),
+            groups_in: args.groups_in.clone(),
+            groups_out: args.groups_out.clone(),
+        }
+    }
+}
+
+/// Short text form of grants: `Red, Blue(in)`.
+pub fn describe_grants(grants: &[GroupGrant]) -> String {
+    if grants.is_empty() {
+        return "-".to_string();
+    }
+    grants
+        .iter()
+        .map(|g| match g.membership.as_str() {
+            "BOTH" => g.name.clone(),
+            other => format!("{}({})", g.name, other.to_lowercase()),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Serialize)]
@@ -74,6 +121,8 @@ struct MintTokenRequest {
     note: Option<String>,
     #[serde(rename = "commonName", skip_serializing_if = "Option::is_none")]
     common_name: Option<String>,
+    #[serde(flatten)]
+    groups: GroupLists,
 }
 
 pub async fn mint_token(
@@ -82,6 +131,7 @@ pub async fn mint_token(
     expires_in_secs: Option<i64>,
     note: Option<String>,
     common_name: Option<String>,
+    groups: GroupLists,
 ) -> Result<String> {
     let response = client
         .post(format!("{}/Marti/api/admin/enrollmentTokens", conn.server))
@@ -89,6 +139,7 @@ pub async fn mint_token(
             expires_in_secs,
             note,
             common_name,
+            groups,
         })
         .send()
         .await
@@ -126,6 +177,8 @@ pub struct UserInfo {
     pub username: String,
     pub created_at_unix: i64,
     pub revoked: bool,
+    #[serde(default)]
+    pub groups: Vec<GroupGrant>,
 }
 
 #[derive(Serialize)]
@@ -133,6 +186,8 @@ struct MintUserRequest {
     username: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     password: Option<String>,
+    #[serde(flatten)]
+    groups: GroupLists,
 }
 
 /// Mint a new password account. If `password` is `None`, the server
@@ -144,12 +199,14 @@ pub async fn mint_user(
     conn: &AdminConnection,
     username: &str,
     password: Option<String>,
+    groups: GroupLists,
 ) -> Result<String> {
     let response = client
         .post(format!("{}/Marti/api/admin/users", conn.server))
         .json(&MintUserRequest {
             username: username.to_string(),
             password,
+            groups,
         })
         .send()
         .await
@@ -190,6 +247,11 @@ pub struct Mission {
     pub creator_uid: String,
     pub roles: std::collections::BTreeMap<String, String>,
     pub subscribers: Vec<String>,
+    /// The groups the mission is visible in (older servers omit this).
+    #[serde(default)]
+    pub groups: Vec<String>,
+    #[serde(rename = "defaultRole", default)]
+    pub default_role: Option<String>,
 }
 
 pub async fn list_missions(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<Mission>> {
@@ -334,5 +396,136 @@ mod tests {
         assert_eq!(urlencode("50%"), "50%25");
         assert_eq!(urlencode("a/b"), "a%2Fb");
         assert_eq!(urlencode("plain-name_1.2~3"), "plain-name_1.2~3");
+    }
+}
+
+// ---------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct GroupInfo {
+    pub name: String,
+    pub description: Option<String>,
+    pub bitpos: u32,
+    /// identity -> `IN` / `OUT` / `BOTH`
+    pub members: std::collections::BTreeMap<String, String>,
+}
+
+pub async fn list_groups(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<GroupInfo>> {
+    let response = client
+        .get(format!("{}/Marti/api/admin/groups", conn.server))
+        .send()
+        .await
+        .context("calling the admin API to list groups")?;
+    let response = check_status(response).await?;
+    response.json().await.context("parsing group list response")
+}
+
+pub async fn create_group(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    name: &str,
+    description: Option<String>,
+) -> Result<()> {
+    let response = client
+        .post(format!("{}/Marti/api/admin/groups", conn.server))
+        .json(&serde_json::json!({ "name": name, "description": description }))
+        .send()
+        .await
+        .context("calling the admin API to create a group")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+pub async fn delete_group(client: &reqwest::Client, conn: &AdminConnection, name: &str) -> Result<()> {
+    let response = client
+        .delete(format!("{}/Marti/api/admin/groups/{}", conn.server, urlencode(name)))
+        .send()
+        .await
+        .context("calling the admin API to delete a group")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+pub async fn set_group_member(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    group: &str,
+    identity: &str,
+    direction: crate::cli::DirectionArg,
+) -> Result<()> {
+    let response = client
+        .put(format!(
+            "{}/Marti/api/admin/groups/{}/members/{}",
+            conn.server,
+            urlencode(group),
+            urlencode(identity)
+        ))
+        .json(&serde_json::json!({ "direction": direction.as_api() }))
+        .send()
+        .await
+        .context("calling the admin API to set a group member")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+pub async fn remove_group_member(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    group: &str,
+    identity: &str,
+) -> Result<()> {
+    let response = client
+        .delete(format!(
+            "{}/Marti/api/admin/groups/{}/members/{}",
+            conn.server,
+            urlencode(group),
+            urlencode(identity)
+        ))
+        .send()
+        .await
+        .context("calling the admin API to remove a group member")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    /// The request carries the official-style lists, and leaves them out
+    /// when empty (older servers reject nothing, newer ones need nothing).
+    #[test]
+    fn mint_requests_carry_group_lists_only_when_given() {
+        let args = crate::cli::GroupArgs {
+            groups: vec!["Red".into()],
+            groups_in: vec![],
+            groups_out: vec!["Blue".into()],
+        };
+        let json = serde_json::to_value(MintUserRequest {
+            username: "u".into(),
+            password: None,
+            groups: GroupLists::from(&args),
+        })
+        .unwrap();
+        assert_eq!(json, serde_json::json!({"username": "u", "groups": ["Red"], "groupsOut": ["Blue"]}));
+        let empty = serde_json::to_value(MintUserRequest {
+            username: "u".into(),
+            password: None,
+            groups: GroupLists::default(),
+        })
+        .unwrap();
+        assert_eq!(empty, serde_json::json!({"username": "u"}));
+    }
+
+    #[test]
+    fn describe_grants_is_short_and_readable() {
+        let grants = vec![
+            GroupGrant { name: "Red".into(), membership: "BOTH".into() },
+            GroupGrant { name: "Blue".into(), membership: "OUT".into() },
+        ];
+        assert_eq!(describe_grants(&grants), "Red, Blue(out)");
+        assert_eq!(describe_grants(&[]), "-");
     }
 }

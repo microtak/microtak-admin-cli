@@ -63,6 +63,84 @@ pub enum Command {
         #[command(subcommand)]
         command: MissionCommand,
     },
+    /// Manage groups ("channels"): who receives what. See the README.
+    Group {
+        #[command(subcommand)]
+        command: GroupCommand,
+    },
+}
+
+/// Groups to put a device into when it enrolls -- the official TAK
+/// Server's user-file lists. Each flag is repeatable.
+#[derive(Args, Clone, Default)]
+pub struct GroupArgs {
+    /// Group to join both ways (send and receive).
+    #[arg(long = "group", value_name = "GROUP")]
+    pub groups: Vec<String>,
+    /// Group the device may only send into (IN).
+    #[arg(long = "group-in", value_name = "GROUP")]
+    pub groups_in: Vec<String>,
+    /// Group the device only receives from (OUT).
+    #[arg(long = "group-out", value_name = "GROUP")]
+    pub groups_out: Vec<String>,
+}
+
+#[derive(Subcommand)]
+pub enum GroupCommand {
+    /// List groups, their bitpos and members.
+    List {
+        #[command(flatten)]
+        conn: AdminConnection,
+    },
+    /// Create a group.
+    Create {
+        #[command(flatten)]
+        conn: AdminConnection,
+        name: String,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Delete a group and all its memberships.
+    Delete {
+        #[command(flatten)]
+        conn: AdminConnection,
+        name: String,
+    },
+    /// Add an identity (a device's certificate name) to a group, or change
+    /// its direction.
+    SetMember {
+        #[command(flatten)]
+        conn: AdminConnection,
+        group: String,
+        identity: String,
+        /// in = may send into the group, out = receives from it, both.
+        #[arg(long, value_enum, default_value_t = DirectionArg::Both)]
+        direction: DirectionArg,
+    },
+    /// Remove an identity from a group.
+    RemoveMember {
+        #[command(flatten)]
+        conn: AdminConnection,
+        group: String,
+        identity: String,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum, PartialEq, Eq, Debug)]
+pub enum DirectionArg {
+    In,
+    Out,
+    Both,
+}
+
+impl DirectionArg {
+    pub fn as_api(self) -> &'static str {
+        match self {
+            DirectionArg::In => "IN",
+            DirectionArg::Out => "OUT",
+            DirectionArg::Both => "BOTH",
+        }
+    }
 }
 
 #[derive(Args)]
@@ -124,6 +202,8 @@ pub enum TokenCommand {
         cn: Option<String>,
         #[command(flatten)]
         link: LinkArgs,
+        #[command(flatten)]
+        groups: GroupArgs,
         /// Also render a QR code in the terminal: the standard TAK
         /// enrollment link (`tak://com.atakmap.app/enroll?...`) that
         /// ATAK/OmniTAK scan to enroll and connect on their own.
@@ -191,6 +271,8 @@ pub enum UserCommand {
         username: String,
         #[arg(long)]
         password: Option<String>,
+        #[command(flatten)]
+        groups: GroupArgs,
     },
     /// List all password accounts and their status.
     List {
@@ -210,6 +292,8 @@ pub enum UserCommand {
 pub enum RoleArg {
     Owner,
     Subscriber,
+    /// Read only (official MISSION_READONLY_SUBSCRIBER).
+    ReadonlySubscriber,
 }
 
 impl std::fmt::Display for RoleArg {
@@ -217,6 +301,7 @@ impl std::fmt::Display for RoleArg {
         f.write_str(match self {
             RoleArg::Owner => "owner",
             RoleArg::Subscriber => "subscriber",
+            RoleArg::ReadonlySubscriber => "readonly_subscriber",
         })
     }
 }

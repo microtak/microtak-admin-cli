@@ -14,7 +14,7 @@ mod qr;
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 
-use cli::{Cli, Command, MissionCommand, TokenCommand, UserCommand};
+use cli::{Cli, Command, GroupCommand, MissionCommand, TokenCommand, UserCommand};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,14 +24,16 @@ async fn main() -> Result<()> {
         Command::Token { command } => run_token_command(command).await,
         Command::User { command } => run_user_command(command).await,
         Command::Mission { command } => run_mission_command(command).await,
+        Command::Group { command } => run_group_command(command).await,
     }
 }
 
 async fn run_user_command(command: UserCommand) -> Result<()> {
     match command {
-        UserCommand::Mint { conn, username, password } => {
+        UserCommand::Mint { conn, username, password, groups } => {
             let client = client::build_client(&conn)?;
-            let password = client::mint_user(&client, &conn, &username, password).await?;
+            let password =
+                client::mint_user(&client, &conn, &username, password, (&groups).into()).await?;
             println!("Minted user '{username}' with password: {password}");
             Ok(())
         }
@@ -55,10 +57,16 @@ fn print_user_table(users: &[client::UserInfo]) {
         println!("No user accounts.");
         return;
     }
-    println!("{:<30} {:<10} CREATED", "USERNAME", "STATUS");
+    println!("{:<30} {:<10} {:<20} GROUPS", "USERNAME", "STATUS", "CREATED");
     for user in users {
         let status = if user.revoked { "revoked" } else { "active" };
-        println!("{:<30} {:<10} {}", user.username, status, format_unix(user.created_at_unix));
+        println!(
+            "{:<30} {:<10} {:<20} {}",
+            user.username,
+            status,
+            format_unix(user.created_at_unix),
+            client::describe_grants(&user.groups)
+        );
     }
 }
 
@@ -70,6 +78,7 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             note,
             cn,
             link,
+            groups,
             qr,
             pdf,
         } => {
@@ -87,7 +96,8 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             let client = client::build_client(&conn)?;
             let note_for_pdf = note.clone();
             let token =
-                client::mint_token(&client, &conn, expires_in_secs, note, cn.clone()).await?;
+                client::mint_token(&client, &conn, expires_in_secs, note, cn.clone(), (&groups).into())
+                    .await?;
             println!("{token}");
             if wants_link {
                 let enrollment_link = qr::EnrollmentLink::from_enrollment_url(
@@ -167,7 +177,12 @@ async fn run_mission_command(command: MissionCommand) -> Result<()> {
             let client = client::build_client(&conn)?;
             let missions = client::list_missions(&client, &conn).await?;
             for mission in missions {
-                println!("{}  (creator: {})", mission.name, mission.creator_uid);
+                println!(
+                    "{}  (creator: {}, groups: {})",
+                    mission.name,
+                    mission.creator_uid,
+                    if mission.groups.is_empty() { "-".to_string() } else { mission.groups.join(", ") }
+                );
             }
             Ok(())
         }
@@ -203,8 +218,8 @@ fn print_token_table(tokens: &[client::EnrollmentToken]) {
         return;
     }
     println!(
-        "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} NOTE",
-        "TOKEN", "STATUS", "FOR", "USED BY", "CREATED", "EXPIRES"
+        "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} {:<24} NOTE",
+        "TOKEN", "STATUS", "FOR", "USED BY", "CREATED", "EXPIRES", "GROUPS"
     );
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -225,13 +240,14 @@ fn print_token_table(tokens: &[client::EnrollmentToken]) {
             None => "never".to_string(),
         };
         println!(
-            "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} {}",
+            "{:<66} {:<10} {:<20} {:<20} {:<20} {:<20} {:<24} {}",
             token.token,
             status,
             token.common_name.as_deref().unwrap_or("any"),
             token.used_by_common_name.as_deref().unwrap_or("-"),
             format_unix(token.created_at_unix),
             expires,
+            client::describe_grants(&token.groups),
             token.note.as_deref().unwrap_or("-"),
         );
     }
@@ -251,9 +267,65 @@ fn print_mission(mission: &client::Mission) {
     println!("Name:        {}", mission.name);
     println!("Description: {}", mission.description.as_deref().unwrap_or("-"));
     println!("Creator:     {}", mission.creator_uid);
+    println!("Groups:      {}", mission.groups.join(", "));
+    println!("Default role: {}", mission.default_role.as_deref().unwrap_or("subscriber"));
     println!("Subscribers: {}", mission.subscribers.join(", "));
     println!("Roles:");
     for (uid, role) in &mission.roles {
         println!("  {uid:<30} {role}");
+    }
+}
+
+async fn run_group_command(command: GroupCommand) -> Result<()> {
+    match command {
+        GroupCommand::List { conn } => {
+            let client = client::build_client(&conn)?;
+            let groups = client::list_groups(&client, &conn).await?;
+            println!("{:<24} {:<7} {:<30} MEMBERS", "GROUP", "BITPOS", "DESCRIPTION");
+            for group in groups {
+                let members = if group.members.is_empty() {
+                    "-".to_string()
+                } else {
+                    group
+                        .members
+                        .iter()
+                        .map(|(identity, direction)| format!("{identity}({})", direction.to_lowercase()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                println!(
+                    "{:<24} {:<7} {:<30} {}",
+                    group.name,
+                    group.bitpos,
+                    group.description.as_deref().unwrap_or("-"),
+                    members
+                );
+            }
+            Ok(())
+        }
+        GroupCommand::Create { conn, name, description } => {
+            let client = client::build_client(&conn)?;
+            client::create_group(&client, &conn, &name, description).await?;
+            println!("Created group '{name}'.");
+            Ok(())
+        }
+        GroupCommand::Delete { conn, name } => {
+            let client = client::build_client(&conn)?;
+            client::delete_group(&client, &conn, &name).await?;
+            println!("Deleted group '{name}'.");
+            Ok(())
+        }
+        GroupCommand::SetMember { conn, group, identity, direction } => {
+            let client = client::build_client(&conn)?;
+            client::set_group_member(&client, &conn, &group, &identity, direction).await?;
+            println!("'{identity}' is in '{group}' ({}).", direction.as_api().to_lowercase());
+            Ok(())
+        }
+        GroupCommand::RemoveMember { conn, group, identity } => {
+            let client = client::build_client(&conn)?;
+            client::remove_group_member(&client, &conn, &group, &identity).await?;
+            println!("Removed '{identity}' from '{group}'.");
+            Ok(())
+        }
     }
 }
