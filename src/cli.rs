@@ -117,20 +117,20 @@ pub enum TokenCommand {
         /// A free-text note to help you remember what this token is for.
         #[arg(long)]
         note: Option<String>,
-        /// Also render the token as a QR code in the terminal, encoding
-        /// the enrollment URL and token together so a device operator can
-        /// scan it instead of copy-pasting -- see the README for the exact
-        /// payload format.
+        /// Bind the token to this device name: it can only enroll this
+        /// identity, and it's the `username` in the QR code. Required for
+        /// --qr and --pdf.
+        #[arg(long)]
+        cn: Option<String>,
+        #[command(flatten)]
+        link: LinkArgs,
+        /// Also render a QR code in the terminal: the standard TAK
+        /// enrollment link (`tak://com.atakmap.app/enroll?...`) that
+        /// ATAK/OmniTAK scan to enroll and connect on their own.
         #[arg(long)]
         qr: bool,
-        /// The enrollment endpoint URL to embed in the QR code payload.
-        /// Only used with --qr and/or --pdf.
-        #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
-        enrollment_url: Option<String>,
         /// Also write a printable enrollment handout PDF (QR code plus
-        /// manual, type-it-by-hand enrollment steps) to this path.
-        /// Requires --enrollment-url, since the handout needs a real URL
-        /// to put in both the QR code and the manual instructions.
+        /// type-it-by-hand steps for the TAK client) to this path.
         #[arg(long, value_name = "PATH")]
         pdf: Option<String>,
     },
@@ -150,10 +150,11 @@ pub enum TokenCommand {
     /// contacting the server at all.
     Pdf {
         token: String,
-        /// The enrollment endpoint URL to embed in the QR code and the
-        /// manual enrollment steps.
-        #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
-        enrollment_url: String,
+        /// The device name the token was minted for (`token mint --cn`).
+        #[arg(long)]
+        cn: String,
+        #[command(flatten)]
+        link: LinkArgs,
         /// A free-text note to show on the handout.
         #[arg(long)]
         note: Option<String>,
@@ -161,6 +162,23 @@ pub enum TokenCommand {
         #[arg(long, default_value = "enrollment.pdf")]
         out: String,
     },
+}
+
+/// Where a device should enroll and connect -- what goes into the QR code
+/// and the handout.
+#[derive(Args, Clone)]
+pub struct LinkArgs {
+    /// The server's enrollment endpoint as devices reach it, e.g.
+    /// https://192.168.1.10:8446, or https://tak.example.com behind a
+    /// reverse proxy on 443. Required for --qr/--pdf.
+    #[arg(long, env = "MICROTAK_ADMIN_ENROLLMENT_URL")]
+    pub enrollment_url: Option<String>,
+    /// The streaming (mTLS CoT) port devices connect to.
+    #[arg(long, default_value_t = crate::qr::DEFAULT_STREAMING_PORT)]
+    pub streaming_port: u16,
+    /// The Marti API port devices connect to.
+    #[arg(long, default_value_t = crate::qr::DEFAULT_API_PORT)]
+    pub api_port: u16,
 }
 
 #[derive(Subcommand)]

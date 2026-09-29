@@ -78,11 +78,10 @@ export MICROTAK_ADMIN_CERT=admin.pem
 export MICROTAK_ADMIN_KEY=admin.key
 export MICROTAK_ADMIN_CA=ca.pem
 
-# Mint a token, optionally expiring, optionally noted, optionally shown as
-# a QR code (encoding a microtak-enroll: URI with the enrollment URL and
-# token together, so a device operator can scan instead of copy-pasting)
-microtak-admin-cli token mint --expires-in-secs 86400 --note "for jz_pixel" \
-  --qr --enrollment-url https://microtak.example.com:8446
+# Mint a token for one device, optionally expiring and noted, and show the
+# enrollment QR code to scan with the TAK client
+microtak-admin-cli token mint --cn phone-1 --expires-in-secs 86400 \
+  --note "for the pixel" --qr --enrollment-url https://192.168.1.10:8446
 
 # List all tokens and their status (active/used/expired/revoked)
 microtak-admin-cli token list
@@ -91,23 +90,50 @@ microtak-admin-cli token list
 microtak-admin-cli token revoke <token>
 ```
 
+### Enrollment QR codes
+
+`--qr` prints the standard TAK enrollment link as a QR code:
+
+```
+tak://com.atakmap.app/enroll?host=<host>&username=<device name>&token=<token>
+```
+
+Scanning it in ATAK or OmniTAK enrolls the device over HTTPS and connects
+it — nothing to type. `--cn` is required with `--qr`/`--pdf`: the token is
+**bound** to that device name (it can only enroll that identity, and the
+name is the QR code's `username`). `host` and the enrollment port come from
+`--enrollment-url` — the address devices reach the server by, e.g.
+`https://tak.example.com` (port 443) behind a reverse proxy. OmniTAK also
+reads `enrollmentport=`, `port=` (streaming) and `apiport=` (Marti API); the
+code includes them only when they differ from 8446/8089/8443 (set the latter
+two with `--streaming-port`/`--api-port`). IPv6 literals aren't supported in
+the link (TAK clients split host and port on the last `:`) — use a DNS name
+or an IPv4 address.
+
+The token is effectively a one-time password for that device name: anyone
+who sees the QR code before the device uses it can enroll as that device.
+Show or hand it over only to the intended user, prefer short expiries, and
+revoke unused ones.
+
 ### Printable handouts (QR code + manual enrollment steps)
 
 For handing a token to someone who isn't at a terminal, mint one with
-`--pdf` to also write a one-page PDF with the QR code and numbered,
-type-it-by-hand instructions (for when scanning isn't an option):
+`--pdf` to also write a one-page PDF with the QR code (printed ~6 cm wide,
+readable by a phone camera) and type-it-by-hand steps for the TAK client
+(host, ports, username, token as password) for when scanning isn't an
+option:
 
 ```sh
-microtak-admin-cli token mint --note "for jz_pixel" \
-  --enrollment-url https://microtak.example.com:8446 --pdf handout.pdf
+microtak-admin-cli token mint --cn phone-1 --note "for the pixel" \
+  --enrollment-url https://192.168.1.10:8446 --pdf handout.pdf
 ```
 
 To regenerate a handout for a token you already have (e.g. from `token
 list`), without minting a new one or contacting the server at all:
 
 ```sh
-microtak-admin-cli token pdf <token> \
-  --enrollment-url https://microtak.example.com:8446 --out handout.pdf
+microtak-admin-cli token pdf <token> --cn phone-1 \
+  --enrollment-url https://192.168.1.10:8446 --out handout.pdf
 ```
 
 `token pdf` doesn't check the server, so it has no way to know the token's
