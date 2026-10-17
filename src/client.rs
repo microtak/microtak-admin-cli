@@ -531,62 +531,73 @@ mod group_tests {
 }
 
 // ---------------------------------------------------------------------
-// Devices: certificate revocation and identity blocks
+// Certificates (official certificate admin API) and identity blocks
 // ---------------------------------------------------------------------
 
+/// A row of the official `GET /Marti/api/certadmin/cert` (`TakCert`).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceInfo {
-    pub common_name: String,
-    pub uid: Option<String>,
-    pub enrolled_at: i64,
-    pub blocked: bool,
-    pub certificate_fingerprint: Option<String>,
-    pub certificate_revoked: bool,
+pub struct TakCert {
+    pub id: i64,
+    pub hash: String,
+    #[serde(default)]
+    pub user_dn: String,
+    #[serde(default)]
+    pub client_uid: String,
+    #[serde(default)]
+    pub issuance_date: Option<String>,
+    #[serde(default)]
+    pub expiration_date: Option<String>,
+    #[serde(default)]
+    pub revocation_date: Option<String>,
 }
 
-impl DeviceInfo {
-    /// `blocked` wins: it covers every certificate of the identity.
+impl TakCert {
     pub fn status(&self) -> &'static str {
-        if self.blocked {
-            "blocked"
-        } else if self.certificate_revoked {
-            "cert revoked"
-        } else {
-            "active"
-        }
+        if self.revocation_date.is_some() { "revoked" } else { "valid" }
     }
 }
 
-pub async fn list_devices(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<DeviceInfo>> {
-    let response = client
-        .get(format!("{}/Marti/api/admin/devices", conn.server))
-        .send()
-        .await
-        .context("calling the admin API to list devices")?;
-    Ok(check_status(response).await?.json().await?)
+/// The official response envelope; only `data` matters here.
+#[derive(Debug, Deserialize)]
+struct ApiResponse<T> {
+    data: T,
 }
 
-/// Revoke the device's current certificate; returns its fingerprint.
-pub async fn revoke_device_certificate(
+/// Every issued certificate, optionally of one user.
+pub async fn list_certificates(
     client: &reqwest::Client,
     conn: &AdminConnection,
-    name: &str,
-) -> Result<String> {
-    let response = client
-        .post(format!(
-            "{}/Marti/api/admin/devices/{}/revokeCertificate",
-            conn.server,
-            urlencode(name)
-        ))
-        .send()
-        .await
-        .context("calling the admin API to revoke a device certificate")?;
-    let body: serde_json::Value = check_status(response).await?.json().await?;
-    Ok(body["fingerprint"].as_str().unwrap_or_default().to_string())
+    username: Option<&str>,
+) -> Result<Vec<TakCert>> {
+    let mut url = format!("{}/Marti/api/certadmin/cert", conn.server);
+    if let Some(user) = username {
+        url.push_str(&format!("?username={}", urlencode(user)));
+    }
+    let response = client.get(url).send().await.context("calling the certificate admin API")?;
+    let body: ApiResponse<Vec<TakCert>> = check_status(response).await?.json().await?;
+    Ok(body.data)
 }
 
-/// Block (`blocked = true`) or unblock an identity.
+/// Revoke one certificate by its hash (official `DELETE /certadmin/cert/{hash}`).
+pub async fn revoke_certificate(client: &reqwest::Client, conn: &AdminConnection, hash: &str) -> Result<()> {
+    let response = client
+        .delete(format!("{}/Marti/api/certadmin/cert/{}", conn.server, urlencode(hash)))
+        .send()
+        .await
+        .context("calling the certificate admin API to revoke a certificate")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+/// The certificates a `device revoke-cert <name>` revokes: the user's
+/// not-yet-revoked ones.
+pub fn revocable<'a>(certs: &'a [TakCert], user: &str) -> Vec<&'a TakCert> {
+    certs.iter().filter(|c| c.user_dn == user && c.revocation_date.is_none()).collect()
+}
+
+/// Block (`blocked = true`) or unblock an identity -- MicroTAK extension,
+/// no official counterpart.
 pub async fn set_device_blocked(
     client: &reqwest::Client,
     conn: &AdminConnection,
@@ -607,47 +618,28 @@ pub async fn set_device_blocked(
 mod device_tests {
     use super::*;
 
-    /// The exact shape microtak-server's `GET /Marti/api/admin/devices`
-    /// returns.
+    /// The official envelope + TakCert shape (NON_NULL: no revocationDate
+    /// unless revoked).
     #[test]
-    fn device_list_parses_the_server_response() {
-        let json = serde_json::json!([{
-            "commonName": "alice",
-            "uid": "ANDROID-1",
-            "enrolledAt": 1_760_000_000,
-            "blocked": false,
-            "certificateFingerprint": "AA:BB",
-            "certificateRevoked": true
-        }, {
-            "commonName": "bob",
-            "uid": null,
-            "enrolledAt": 1_760_000_100,
-            "blocked": true,
-            "certificateFingerprint": null,
-            "certificateRevoked": false
-        }]);
-        let devices: Vec<DeviceInfo> = serde_json::from_value(json).unwrap();
-        assert_eq!(devices[0].common_name, "alice");
-        assert_eq!(devices[0].uid.as_deref(), Some("ANDROID-1"));
-        assert!(devices[0].certificate_revoked);
-        assert!(devices[1].blocked);
-        assert_eq!(devices[1].certificate_fingerprint, None);
-    }
-
-    #[test]
-    fn device_status_names_the_reason() {
-        let mut device = DeviceInfo {
-            common_name: "x".into(),
-            uid: None,
-            enrolled_at: 0,
-            blocked: false,
-            certificate_fingerprint: None,
-            certificate_revoked: false,
-        };
-        assert_eq!(device.status(), "active");
-        device.certificate_revoked = true;
-        assert_eq!(device.status(), "cert revoked");
-        device.blocked = true;
-        assert_eq!(device.status(), "blocked");
+    fn certificate_list_parses_the_official_response() {
+        let json = serde_json::json!({
+            "version": "3", "type": "TakCert", "nodeId": "abc",
+            "data": [{
+                "id": 7, "hash": "AA:BB", "userDn": "alice", "clientUid": "ANDROID-1",
+                "subjectDn": "CN=alice", "issuanceDate": "2026-10-17T16:00:00.5Z",
+                "expirationDate": "2027-10-17T16:00:00.0Z"
+            }, {
+                "id": 8, "hash": "CC:DD", "userDn": "alice", "clientUid": "ANDROID-1",
+                "revocationDate": "2026-10-18T09:00:00.0Z"
+            }]
+        });
+        let body: ApiResponse<Vec<TakCert>> = serde_json::from_value(json).unwrap();
+        assert_eq!(body.data[0].id, 7);
+        assert_eq!(body.data[0].status(), "valid");
+        assert_eq!(body.data[1].status(), "revoked");
+        let revocable = revocable(&body.data, "alice");
+        assert_eq!(revocable.len(), 1);
+        assert_eq!(revocable[0].hash, "AA:BB");
+        assert!(super::revocable(&body.data, "bob").is_empty());
     }
 }

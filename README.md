@@ -174,13 +174,14 @@ longer do either, even with the correct password.
 ## Revoking devices
 
 ```sh
-microtak-admin-cli device list                 # every identity, its certificate and status
+microtak-admin-cli device list                 # every issued certificate (official certadmin API)
 microtak-admin-cli device revoke-cert alice    # lost/compromised device
 microtak-admin-cli device block mallory        # lock an identity out entirely
 microtak-admin-cli device unblock mallory
 ```
 
-`revoke-cert` revokes the device's current certificate: it stops working
+`revoke-cert` revokes the user's unrevoked certificates through the
+official certificate admin API: they stop working
 immediately, including its live connection. The identity stays usable, so
 the owner can enroll a replacement device with their password account.
 `block` refuses every certificate of the identity and its re-enrollment

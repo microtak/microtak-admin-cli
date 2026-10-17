@@ -281,14 +281,21 @@ async fn run_device_command(command: DeviceCommand) -> Result<()> {
     match command {
         DeviceCommand::List { conn } => {
             let client = client::build_client(&conn)?;
-            let devices = client::list_devices(&client, &conn).await?;
-            print_device_table(&devices);
+            let certs = client::list_certificates(&client, &conn, None).await?;
+            print_certificate_table(&certs);
             Ok(())
         }
         DeviceCommand::RevokeCert { conn, name } => {
             let client = client::build_client(&conn)?;
-            let fingerprint = client::revoke_device_certificate(&client, &conn, &name).await?;
-            println!("Revoked the certificate of '{name}' ({fingerprint}).");
+            let certs = client::list_certificates(&client, &conn, Some(&name)).await?;
+            let revocable = client::revocable(&certs, &name);
+            if revocable.is_empty() {
+                bail!("'{name}' has no unrevoked certificate");
+            }
+            for cert in revocable {
+                client::revoke_certificate(&client, &conn, &cert.hash).await?;
+                println!("Revoked certificate {} of '{name}' ({}).", cert.id, cert.hash);
+            }
             Ok(())
         }
         DeviceCommand::Block { conn, name } => {
@@ -306,20 +313,22 @@ async fn run_device_command(command: DeviceCommand) -> Result<()> {
     }
 }
 
-fn print_device_table(devices: &[client::DeviceInfo]) {
-    if devices.is_empty() {
-        println!("No enrolled devices.");
+fn print_certificate_table(certs: &[client::TakCert]) {
+    if certs.is_empty() {
+        println!("No issued certificates.");
         return;
     }
-    println!("{:<30} {:<13} {:<20} {:<24} FINGERPRINT", "NAME", "STATUS", "ENROLLED", "UID");
-    for device in devices {
+    println!("{:<5} {:<24} {:<8} {:<20} {:<24} {:<24} HASH", "ID", "USER", "STATUS", "CLIENT UID", "ISSUED", "EXPIRES");
+    for cert in certs {
         println!(
-            "{:<30} {:<13} {:<20} {:<24} {}",
-            device.common_name,
-            device.status(),
-            format_unix(device.enrolled_at),
-            device.uid.as_deref().unwrap_or("-"),
-            device.certificate_fingerprint.as_deref().unwrap_or("-"),
+            "{:<5} {:<24} {:<8} {:<20} {:<24} {:<24} {}",
+            cert.id,
+            cert.user_dn,
+            cert.status(),
+            if cert.client_uid.is_empty() { "-" } else { &cert.client_uid },
+            cert.issuance_date.as_deref().unwrap_or("-"),
+            cert.expiration_date.as_deref().unwrap_or("-"),
+            cert.hash,
         );
     }
 }

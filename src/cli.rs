@@ -68,8 +68,8 @@ pub enum Command {
         #[command(subcommand)]
         command: GroupCommand,
     },
-    /// Manage enrolled devices: revoke a lost device's certificate, block
-    /// or unblock an identity.
+    /// Certificates and identities: list issued certificates, revoke a lost
+    /// device's certificate, block or unblock an identity.
     Device {
         #[command(subcommand)]
         command: DeviceCommand,
@@ -78,14 +78,14 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum DeviceCommand {
-    /// List every enrolled identity with its certificate and status.
+    /// List every issued certificate (id, user, status, client uid, hash).
     List {
         #[command(flatten)]
         conn: AdminConnection,
     },
-    /// Revoke a device's current certificate (lost or compromised device).
-    /// It stops working immediately, live connection included; the owner
-    /// can enroll a new device with their password account.
+    /// Revoke the user's unrevoked certificates (lost or compromised
+    /// device). They stop working immediately, live connection included;
+    /// the owner can enroll a new device with their password account.
     RevokeCert {
         #[command(flatten)]
         conn: AdminConnection,
