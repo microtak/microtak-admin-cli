@@ -11,6 +11,8 @@ management.
 Version 0.3 and later talk to the official Mission API and need
 microtak-server 0.9 or later.
 
+MicroTAK is not affiliated with or endorsed by the U.S. Department of Defense, the TAK Product Center, or any other organization.
+
 ## Building
 
 ```sh
