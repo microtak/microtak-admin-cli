@@ -68,6 +68,42 @@ pub enum Command {
         #[command(subcommand)]
         command: GroupCommand,
     },
+    /// Manage enrolled devices: revoke a lost device's certificate, block
+    /// or unblock an identity.
+    Device {
+        #[command(subcommand)]
+        command: DeviceCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DeviceCommand {
+    /// List every enrolled identity with its certificate and status.
+    List {
+        #[command(flatten)]
+        conn: AdminConnection,
+    },
+    /// Revoke a device's current certificate (lost or compromised device).
+    /// It stops working immediately, live connection included; the owner
+    /// can enroll a new device with their password account.
+    RevokeCert {
+        #[command(flatten)]
+        conn: AdminConnection,
+        name: String,
+    },
+    /// Block an identity: every certificate refused, no re-enrollment,
+    /// until unblocked.
+    Block {
+        #[command(flatten)]
+        conn: AdminConnection,
+        name: String,
+    },
+    /// Lift a block. Individually revoked certificates stay revoked.
+    Unblock {
+        #[command(flatten)]
+        conn: AdminConnection,
+        name: String,
+    },
 }
 
 /// Groups to put a device into when it enrolls -- the official TAK
@@ -338,4 +374,36 @@ pub enum MissionCommand {
         mission: String,
         uid: String,
     },
+}
+
+#[cfg(test)]
+mod device_cli_tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Command {
+        let mut full = vec!["microtak-admin-cli", "device"];
+        full.extend_from_slice(args);
+        full.extend_from_slice(&["--server", "https://s:8443", "--cert", "c", "--key", "k", "--ca", "a"]);
+        Cli::try_parse_from(full).unwrap().command
+    }
+
+    #[test]
+    fn device_subcommands_parse() {
+        assert!(matches!(
+            parse(&["list"]),
+            Command::Device { command: DeviceCommand::List { .. } }
+        ));
+        assert!(matches!(
+            parse(&["revoke-cert", "alice"]),
+            Command::Device { command: DeviceCommand::RevokeCert { name, .. } } if name == "alice"
+        ));
+        assert!(matches!(
+            parse(&["block", "bob"]),
+            Command::Device { command: DeviceCommand::Block { name, .. } } if name == "bob"
+        ));
+        assert!(matches!(
+            parse(&["unblock", "bob"]),
+            Command::Device { command: DeviceCommand::Unblock { name, .. } } if name == "bob"
+        ));
+    }
 }

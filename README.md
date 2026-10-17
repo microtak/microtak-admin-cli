@@ -171,6 +171,22 @@ enrollment endpoint — see `microtak-server`'s own
 `docs/ARCHITECTURE.md` for the full wire contract. A revoked account can no
 longer do either, even with the correct password.
 
+## Revoking devices
+
+```sh
+microtak-admin-cli device list                 # every identity, its certificate and status
+microtak-admin-cli device revoke-cert alice    # lost/compromised device
+microtak-admin-cli device block mallory        # lock an identity out entirely
+microtak-admin-cli device unblock mallory
+```
+
+`revoke-cert` revokes the device's current certificate: it stops working
+immediately, including its live connection. The identity stays usable, so
+the owner can enroll a replacement device with their password account.
+`block` refuses every certificate of the identity and its re-enrollment
+until `unblock`; certificates revoked individually stay revoked. Revoking a
+password account (`user revoke`) also revokes its certificate.
+
 ## Managing mission roles
 
 ```sh

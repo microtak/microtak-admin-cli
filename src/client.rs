@@ -529,3 +529,125 @@ mod group_tests {
         assert_eq!(describe_grants(&[]), "-");
     }
 }
+
+// ---------------------------------------------------------------------
+// Devices: certificate revocation and identity blocks
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInfo {
+    pub common_name: String,
+    pub uid: Option<String>,
+    pub enrolled_at: i64,
+    pub blocked: bool,
+    pub certificate_fingerprint: Option<String>,
+    pub certificate_revoked: bool,
+}
+
+impl DeviceInfo {
+    /// `blocked` wins: it covers every certificate of the identity.
+    pub fn status(&self) -> &'static str {
+        if self.blocked {
+            "blocked"
+        } else if self.certificate_revoked {
+            "cert revoked"
+        } else {
+            "active"
+        }
+    }
+}
+
+pub async fn list_devices(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<DeviceInfo>> {
+    let response = client
+        .get(format!("{}/Marti/api/admin/devices", conn.server))
+        .send()
+        .await
+        .context("calling the admin API to list devices")?;
+    Ok(check_status(response).await?.json().await?)
+}
+
+/// Revoke the device's current certificate; returns its fingerprint.
+pub async fn revoke_device_certificate(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    name: &str,
+) -> Result<String> {
+    let response = client
+        .post(format!(
+            "{}/Marti/api/admin/devices/{}/revokeCertificate",
+            conn.server,
+            urlencode(name)
+        ))
+        .send()
+        .await
+        .context("calling the admin API to revoke a device certificate")?;
+    let body: serde_json::Value = check_status(response).await?.json().await?;
+    Ok(body["fingerprint"].as_str().unwrap_or_default().to_string())
+}
+
+/// Block (`blocked = true`) or unblock an identity.
+pub async fn set_device_blocked(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    name: &str,
+    blocked: bool,
+) -> Result<()> {
+    let url = format!("{}/Marti/api/admin/devices/{}/block", conn.server, urlencode(name));
+    let request = if blocked { client.put(url) } else { client.delete(url) };
+    let response = request
+        .send()
+        .await
+        .context("calling the admin API to change a device block")?;
+    check_status(response).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod device_tests {
+    use super::*;
+
+    /// The exact shape microtak-server's `GET /Marti/api/admin/devices`
+    /// returns.
+    #[test]
+    fn device_list_parses_the_server_response() {
+        let json = serde_json::json!([{
+            "commonName": "alice",
+            "uid": "ANDROID-1",
+            "enrolledAt": 1_760_000_000,
+            "blocked": false,
+            "certificateFingerprint": "AA:BB",
+            "certificateRevoked": true
+        }, {
+            "commonName": "bob",
+            "uid": null,
+            "enrolledAt": 1_760_000_100,
+            "blocked": true,
+            "certificateFingerprint": null,
+            "certificateRevoked": false
+        }]);
+        let devices: Vec<DeviceInfo> = serde_json::from_value(json).unwrap();
+        assert_eq!(devices[0].common_name, "alice");
+        assert_eq!(devices[0].uid.as_deref(), Some("ANDROID-1"));
+        assert!(devices[0].certificate_revoked);
+        assert!(devices[1].blocked);
+        assert_eq!(devices[1].certificate_fingerprint, None);
+    }
+
+    #[test]
+    fn device_status_names_the_reason() {
+        let mut device = DeviceInfo {
+            common_name: "x".into(),
+            uid: None,
+            enrolled_at: 0,
+            blocked: false,
+            certificate_fingerprint: None,
+            certificate_revoked: false,
+        };
+        assert_eq!(device.status(), "active");
+        device.certificate_revoked = true;
+        assert_eq!(device.status(), "cert revoked");
+        device.blocked = true;
+        assert_eq!(device.status(), "blocked");
+    }
+}

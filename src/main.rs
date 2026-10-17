@@ -14,7 +14,7 @@ mod qr;
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 
-use cli::{Cli, Command, GroupCommand, MissionCommand, TokenCommand, UserCommand};
+use cli::{Cli, Command, DeviceCommand, GroupCommand, MissionCommand, TokenCommand, UserCommand};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,6 +25,7 @@ async fn main() -> Result<()> {
         Command::User { command } => run_user_command(command).await,
         Command::Mission { command } => run_mission_command(command).await,
         Command::Group { command } => run_group_command(command).await,
+        Command::Device { command } => run_device_command(command).await,
     }
 }
 
@@ -273,6 +274,53 @@ fn print_mission(mission: &client::Mission) {
     println!("Roles:");
     for (uid, role) in &mission.roles {
         println!("  {uid:<30} {role}");
+    }
+}
+
+async fn run_device_command(command: DeviceCommand) -> Result<()> {
+    match command {
+        DeviceCommand::List { conn } => {
+            let client = client::build_client(&conn)?;
+            let devices = client::list_devices(&client, &conn).await?;
+            print_device_table(&devices);
+            Ok(())
+        }
+        DeviceCommand::RevokeCert { conn, name } => {
+            let client = client::build_client(&conn)?;
+            let fingerprint = client::revoke_device_certificate(&client, &conn, &name).await?;
+            println!("Revoked the certificate of '{name}' ({fingerprint}).");
+            Ok(())
+        }
+        DeviceCommand::Block { conn, name } => {
+            let client = client::build_client(&conn)?;
+            client::set_device_blocked(&client, &conn, &name, true).await?;
+            println!("Blocked '{name}'.");
+            Ok(())
+        }
+        DeviceCommand::Unblock { conn, name } => {
+            let client = client::build_client(&conn)?;
+            client::set_device_blocked(&client, &conn, &name, false).await?;
+            println!("Unblocked '{name}'.");
+            Ok(())
+        }
+    }
+}
+
+fn print_device_table(devices: &[client::DeviceInfo]) {
+    if devices.is_empty() {
+        println!("No enrolled devices.");
+        return;
+    }
+    println!("{:<30} {:<13} {:<20} {:<24} FINGERPRINT", "NAME", "STATUS", "ENROLLED", "UID");
+    for device in devices {
+        println!(
+            "{:<30} {:<13} {:<20} {:<24} {}",
+            device.common_name,
+            device.status(),
+            format_unix(device.enrolled_at),
+            device.uid.as_deref().unwrap_or("-"),
+            device.certificate_fingerprint.as_deref().unwrap_or("-"),
+        );
     }
 }
 
