@@ -239,86 +239,94 @@ pub async fn revoke_user(client: &reqwest::Client, conn: &AdminConnection, usern
     Ok(())
 }
 
+/// The official `ApiResponse` envelope around `data`.
+#[derive(Debug, Deserialize)]
+struct Envelope<T> {
+    data: T,
+}
+
+/// An official `MissionRole` (`{"type": "MISSION_OWNER", ...}`).
+#[derive(Debug, Deserialize)]
+pub struct MissionRole {
+    #[serde(rename = "type")]
+    pub role: String,
+}
+
+/// The official `Mission` JSON, the fields shown here.
 #[derive(Debug, Deserialize)]
 pub struct Mission {
     pub name: String,
-    pub description: Option<String>,
-    #[serde(rename = "creator_uid")]
+    pub guid: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(rename = "creatorUid", default)]
     pub creator_uid: String,
-    pub roles: std::collections::BTreeMap<String, String>,
-    pub subscribers: Vec<String>,
-    /// The groups the mission is visible in (older servers omit this).
     #[serde(default)]
     pub groups: Vec<String>,
-    #[serde(rename = "defaultRole", default)]
-    pub default_role: Option<String>,
+    #[serde(rename = "defaultRole")]
+    pub default_role: Option<MissionRole>,
+    #[serde(rename = "passwordProtected", default)]
+    pub password_protected: bool,
 }
 
+/// An official `MissionSubscription` without its token
+/// (`GET /missions/{name}/subscriptions/roles`).
+#[derive(Debug, Deserialize)]
+pub struct Subscription {
+    #[serde(rename = "clientUid")]
+    pub client_uid: String,
+    #[serde(default)]
+    pub username: String,
+    pub role: MissionRole,
+}
+
+/// Every mission, password-protected and role-enabled ones included (the
+/// official list leaves those out unless asked).
 pub async fn list_missions(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<Mission>> {
     let response = client
-        .get(format!("{}/Marti/api/missions", conn.server))
+        .get(format!("{}/Marti/api/missions?passwordProtected=true&defaultRole=true", conn.server))
         .send()
         .await
         .context("listing missions")?;
     let response = check_status(response).await?;
-    response.json().await.context("parsing mission list response")
+    let envelope: Envelope<Vec<Mission>> = response.json().await.context("parsing mission list response")?;
+    Ok(envelope.data)
 }
 
-pub async fn get_mission(client: &reqwest::Client, conn: &AdminConnection, name: &str) -> Result<Mission> {
+pub async fn get_mission(client: &reqwest::Client, conn: &AdminConnection, name: &str) -> Result<(Mission, Vec<Subscription>)> {
     let response = client
-        .get(format!(
-            "{}/Marti/api/missions/{}",
-            conn.server,
-            urlencode(name)
-        ))
+        .get(format!("{}/Marti/api/missions/{}", conn.server, urlencode(name)))
         .send()
         .await
         .context("fetching mission")?;
     let response = check_status(response).await?;
-    response.json().await.context("parsing mission response")
+    let envelope: Envelope<Vec<Mission>> = response.json().await.context("parsing mission response")?;
+    let mission = envelope.data.into_iter().next().context("the server answered no mission")?;
+    let response = client
+        .get(format!("{}/Marti/api/missions/{}/subscriptions/roles", conn.server, urlencode(name)))
+        .send()
+        .await
+        .context("fetching the mission's subscriptions")?;
+    let response = check_status(response).await?;
+    let subscriptions: Envelope<Vec<Subscription>> = response.json().await.context("parsing subscriptions response")?;
+    Ok((mission, subscriptions.data))
 }
 
-#[derive(Serialize)]
-struct SetRoleRequest {
-    uid: String,
-    role: String,
-}
-
+/// The official `PUT /missions/{name}/role`: the subscription of `uid`
+/// gets `role`; without a role it is removed (unsubscribed). The server
+/// only allows this on missions with a default role.
 pub async fn set_role(
     client: &reqwest::Client,
     conn: &AdminConnection,
     mission: &str,
     uid: &str,
-    role: RoleArg,
+    role: Option<RoleArg>,
 ) -> Result<()> {
-    let response = client
-        .put(format!(
-            "{}/Marti/api/missions/{}/role",
-            conn.server,
-            urlencode(mission)
-        ))
-        .json(&SetRoleRequest {
-            uid: uid.to_string(),
-            role: role.to_string(),
-        })
-        .send()
-        .await
-        .context("assigning a mission role")?;
-    check_status(response).await?;
-    Ok(())
-}
-
-pub async fn revoke_role(client: &reqwest::Client, conn: &AdminConnection, mission: &str, uid: &str) -> Result<()> {
-    let response = client
-        .delete(format!(
-            "{}/Marti/api/missions/{}/role/{}",
-            conn.server,
-            urlencode(mission),
-            urlencode(uid)
-        ))
-        .send()
-        .await
-        .context("revoking a mission role")?;
+    let mut url = format!("{}/Marti/api/missions/{}/role?clientUid={}", conn.server, urlencode(mission), urlencode(uid));
+    if let Some(role) = role {
+        url.push_str(&format!("&role={}", role.official()));
+    }
+    let response = client.put(url).send().await.context("setting a mission role")?;
     check_status(response).await?;
     Ok(())
 }

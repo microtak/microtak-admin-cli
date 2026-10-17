@@ -332,6 +332,17 @@ pub enum RoleArg {
     ReadonlySubscriber,
 }
 
+impl RoleArg {
+    /// The official `MissionRole.Role` name.
+    pub fn official(self) -> &'static str {
+        match self {
+            RoleArg::Owner => "MISSION_OWNER",
+            RoleArg::Subscriber => "MISSION_SUBSCRIBER",
+            RoleArg::ReadonlySubscriber => "MISSION_READONLY_SUBSCRIBER",
+        }
+    }
+}
+
 impl std::fmt::Display for RoleArg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -365,9 +376,8 @@ pub enum MissionCommand {
         #[arg(value_enum)]
         role: RoleArg,
     },
-    /// Revoke an identity's role on a mission entirely. You must already
-    /// hold the Owner role on it yourself; rejected if it would leave the
-    /// mission with zero owners.
+    /// Remove a client's subscription (and with it its role) from a
+    /// mission -- the official role endpoint without a role.
     RevokeRole {
         #[command(flatten)]
         conn: AdminConnection,

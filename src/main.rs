@@ -179,19 +179,17 @@ async fn run_mission_command(command: MissionCommand) -> Result<()> {
             let missions = client::list_missions(&client, &conn).await?;
             for mission in missions {
                 println!(
-                    "{}  (creator: {}, groups: {})",
+                    "{}\t{}\t{}",
                     mission.name,
-                    mission.creator_uid,
+                    if mission.creator_uid.is_empty() { "-" } else { &mission.creator_uid },
                     if mission.groups.is_empty() { "-".to_string() } else { mission.groups.join(", ") }
                 );
             }
-            Ok(())
         }
         MissionCommand::Get { conn, name } => {
             let client = client::build_client(&conn)?;
-            let mission = client::get_mission(&client, &conn, &name).await?;
-            print_mission(&mission);
-            Ok(())
+            let (mission, subscriptions) = client::get_mission(&client, &conn, &name).await?;
+            print_mission(&mission, &subscriptions);
         }
         MissionCommand::SetRole {
             conn,
@@ -200,17 +198,16 @@ async fn run_mission_command(command: MissionCommand) -> Result<()> {
             role,
         } => {
             let client = client::build_client(&conn)?;
-            client::set_role(&client, &conn, &mission, &uid, role).await?;
+            client::set_role(&client, &conn, &mission, &uid, Some(role)).await?;
             println!("Assigned {role} to '{uid}' on '{mission}'.");
-            Ok(())
         }
         MissionCommand::RevokeRole { conn, mission, uid } => {
             let client = client::build_client(&conn)?;
-            client::revoke_role(&client, &conn, &mission, &uid).await?;
-            println!("Revoked the role '{uid}' held on '{mission}'.");
-            Ok(())
+            client::set_role(&client, &conn, &mission, &uid, None).await?;
+            println!("Removed '{uid}' from '{mission}'.");
         }
     }
+    Ok(())
 }
 
 fn print_token_table(tokens: &[client::EnrollmentToken]) {
@@ -264,16 +261,17 @@ fn format_unix(unix_seconds: i64) -> String {
         .unwrap_or_else(|| unix_seconds.to_string())
 }
 
-fn print_mission(mission: &client::Mission) {
+fn print_mission(mission: &client::Mission, subscriptions: &[client::Subscription]) {
     println!("Name:        {}", mission.name);
-    println!("Description: {}", mission.description.as_deref().unwrap_or("-"));
-    println!("Creator:     {}", mission.creator_uid);
+    println!("Guid:        {}", mission.guid);
+    println!("Description: {}", if mission.description.is_empty() { "-" } else { &mission.description });
+    println!("Creator:     {}", if mission.creator_uid.is_empty() { "-" } else { &mission.creator_uid });
     println!("Groups:      {}", mission.groups.join(", "));
-    println!("Default role: {}", mission.default_role.as_deref().unwrap_or("subscriber"));
-    println!("Subscribers: {}", mission.subscribers.join(", "));
-    println!("Roles:");
-    for (uid, role) in &mission.roles {
-        println!("  {uid:<30} {role}");
+    println!("Default role: {}", mission.default_role.as_ref().map(|r| r.role.as_str()).unwrap_or("MISSION_SUBSCRIBER (not set)"));
+    println!("Password:    {}", if mission.password_protected { "yes" } else { "no" });
+    println!("Subscriptions:");
+    for s in subscriptions {
+        println!("  {}\t{}\t{}", s.client_uid, if s.username.is_empty() { "-" } else { &s.username }, s.role.role);
     }
 }
 
