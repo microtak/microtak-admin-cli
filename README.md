@@ -1,11 +1,15 @@
 # microtak-admin-cli
 
 A command-line tool for managing a [MicroTAK](https://github.com/microtak/microtak-server)
-server: device enrollment, enrollment invite tokens, and mission roles —
-wraps the HTTP endpoints documented in `microtak-server`'s own
-`docs/ARCHITECTURE.md` ("Enrollment lockdown / admin API" and "Mission
-roles" sections) so you don't have to hand-craft `curl`/mTLS invocations
-for routine access management.
+server: device enrollment, enrollment invite tokens, password accounts,
+certificate revocation, groups and mission roles. It wraps the server's
+HTTP API (the official TAK Server endpoints where they exist, MicroTAK's
+admin API otherwise; see `microtak-server`'s `docs/ARCHITECTURE.md`) so
+you don't have to hand-craft `curl`/mTLS invocations for routine access
+management.
+
+Version 0.3 and later talk to the official Mission API and need
+microtak-server 0.9 or later.
 
 ## Building
 
@@ -200,14 +204,14 @@ microtak-admin-cli mission revoke-role "Recon Alpha" some-device
 
 Roles mirror the official TAK Server: `owner` (`MISSION_OWNER`),
 `subscriber` (`MISSION_SUBSCRIBER`: read and add content) and
-`readonly-subscriber` (`MISSION_READONLY_SUBSCRIBER`: read only). `mission
-get` also shows the groups the mission is visible in and the role new
-subscribers get.
+`readonly-subscriber` (`MISSION_READONLY_SUBSCRIBER`: read only). These
+commands use the official Mission API (`/Marti/api/missions/...`,
+`PUT .../role`), the same calls ATAK and the official TAK Server admin
+tools make; `revoke-role` sets no role, which unsubscribes the device. `mission get` also shows the groups the mission is visible in
+and the role new subscribers get.
 
-You must already hold the `Owner` role on a mission yourself to manage its
-roles. Revoking or demoting a mission's last remaining `Owner` is rejected
-by the server (a mission can never end up with zero owners) and surfaces
-as a normal error with a non-zero exit code.
+Only the mission's owner (or the server's admin) can change roles; any
+other caller gets the server's error and a non-zero exit code.
 
 ## Managing groups ("channels")
 
@@ -241,6 +245,13 @@ microtak-admin-cli user mint cloudtak-alice --group Red
 
 Devices can switch their groups on and off themselves (ATAK's channel
 selector).
+
+## Security
+
+This tool holds the admin certificate and key, which can enroll, revoke
+and reassign anything on the server. Keep them owner-only (`chmod 600`)
+and off shared machines. To report a vulnerability, see
+[SECURITY.md](SECURITY.md).
 
 ## License
 
