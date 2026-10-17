@@ -29,15 +29,20 @@ permissions:
 
 jobs:
   build:
-    # x86_64-linux only for now -- the natural next step is adding
-    # aarch64-unknown-linux-gnu (Raspberry Pi et al., fitting this
-    # project's own edge-hardware ethos) via `cross`, and macOS targets on
-    # `macos-latest` runners, once this baseline is proven out.
-    runs-on: ubuntu-latest
+    # Each target builds natively on its own runner (no cross toolchain).
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     env:
       TAG: ${{ inputs.tag_name }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      ARCHIVE: microtak-admin-cli-${{ matrix.target }}.tar.gz
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,14 +54,19 @@ jobs:
         run: cargo build --release --locked
 
       - name: Package
-        run: |
-          cd target/release
-          tar czf microtak-admin-cli-x86_64-unknown-linux-gnu.tar.gz microtak-admin-cli
+        run: tar czf "$ARCHIVE" -C target/release microtak-admin-cli
 
       # `gh` finds draft releases by tag (the REST "get release by tag"
       # endpoint, which some upload actions rely on, doesn't return drafts).
       - name: Upload to the draft release
-        run: gh release upload "$TAG" target/release/microtak-admin-cli-x86_64-unknown-linux-gnu.tar.gz --clobber
+        run: gh release upload "$TAG" "$ARCHIVE" --clobber
 
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
       - name: Publish the release
-        run: gh release edit "$TAG" --draft=false --latest
+        run: gh release edit "${{ inputs.tag_name }}" --draft=false --latest
