@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0](https://github.com/microtak/microtak-admin-cli/compare/v0.3.0...v0.4.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* needs microtak-server 0.9.0.
+
+### Features
+
+* device list, certificate revocation and identity blocks ([cc4450d](https://github.com/microtak/microtak-admin-cli/commit/cc4450d983c4c7318050ce466747ecb5ef6a1262))
+* mission commands use the official mission API ([ea05bf1](https://github.com/microtak/microtak-admin-cli/commit/ea05bf12cea36af5b40192838ba99756502ad81d))
+
+
+### Bug Fixes
+
+* **deps:** build handouts with printpdf 0.12 instead of genpdf ([4a585cb](https://github.com/microtak/microtak-admin-cli/commit/4a585cbc6f0b0577544bf697cfc6a380182f11fd))
+* device commands use the official certificate admin API ([1a34df7](https://github.com/microtak/microtak-admin-cli/commit/1a34df7ad3fb42a096fe743c209a9d92fdf9166f))
+
+
+### Documentation
+
+* non-affiliation notice in the README ([64e3934](https://github.com/microtak/microtak-admin-cli/commit/64e3934f84fc9f2434625934b17bbcc32526f730))
+* SECURITY.md, README for the official mission API ([1dce18c](https://github.com/microtak/microtak-admin-cli/commit/1dce18c594c5a52e7c3cd1dd59842a01c69f3e2f))
+
 ## [0.3.0](https://github.com/microtak/microtak-admin-cli/compare/v0.2.0...v0.3.0) (2026-09-29)
 
 
