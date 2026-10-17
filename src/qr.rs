@@ -9,9 +9,9 @@
 //! API); they're only added when they differ from the TAK defaults (8446,
 //! 8089, 8443), keeping the code small and the link ATAK-compatible.
 
-use anyhow::{bail, Context, Result};
-use qrcode::render::unicode;
+use anyhow::{Context, Result, bail};
 use qrcode::QrCode;
+use qrcode::render::unicode;
 
 pub const DEFAULT_ENROLLMENT_PORT: u16 = 8446;
 pub const DEFAULT_STREAMING_PORT: u16 = 8089;
@@ -70,7 +70,10 @@ impl EnrollmentLink {
 /// `https://host[:port][/]` → (host, port); port defaults to 443.
 fn split_https_url(url: &str) -> Result<(String, u16)> {
     let lower = url.to_ascii_lowercase();
-    let Some(rest) = lower.strip_prefix("https://").map(|_| &url["https://".len()..]) else {
+    let Some(rest) = lower
+        .strip_prefix("https://")
+        .map(|_| &url["https://".len()..])
+    else {
         bail!("the enrollment URL must be https:// (got '{url}')");
     };
     let authority = rest.split('/').next().unwrap_or_default();
@@ -80,7 +83,9 @@ fn split_https_url(url: &str) -> Result<(String, u16)> {
     if authority.starts_with('[') {
         // TAK clients split host:port on the last ':' -- a bare IPv6
         // literal can't survive that. Use a DNS name or IPv4 address.
-        bail!("IPv6 literals aren't supported in enrollment QR codes -- use a DNS name or IPv4 address");
+        bail!(
+            "IPv6 literals aren't supported in enrollment QR codes -- use a DNS name or IPv4 address"
+        );
     }
     match authority.rsplit_once(':') {
         Some((host, port)) => {
@@ -153,16 +158,22 @@ mod tests {
 
     #[test]
     fn values_are_percent_encoded() {
-        let uri = EnrollmentLink::from_enrollment_url("https://h:8446", "team a&b", "t=1", 8089, 8443)
-            .unwrap()
-            .to_uri();
+        let uri =
+            EnrollmentLink::from_enrollment_url("https://h:8446", "team a&b", "t=1", 8089, 8443)
+                .unwrap()
+                .to_uri();
         assert!(uri.contains("username=team%20a%26b&token=t%3D1"), "{uri}");
     }
 
     #[test]
     fn refuses_plain_http_and_ipv6_literals() {
-        assert!(EnrollmentLink::from_enrollment_url("http://h:8446", "u", "t", 8089, 8443).is_err());
-        assert!(EnrollmentLink::from_enrollment_url("https://[fd00::1]:8446", "u", "t", 8089, 8443).is_err());
+        assert!(
+            EnrollmentLink::from_enrollment_url("http://h:8446", "u", "t", 8089, 8443).is_err()
+        );
+        assert!(
+            EnrollmentLink::from_enrollment_url("https://[fd00::1]:8446", "u", "t", 8089, 8443)
+                .is_err()
+        );
     }
 
     /// A real QR encode/render round trip -- not just the payload string,
@@ -181,6 +192,9 @@ mod tests {
         .to_uri();
         let code = QrCode::new(uri.as_bytes()).unwrap();
         let rendered = code.render::<unicode::Dense1x2>().build();
-        assert!(rendered.lines().count() > 5, "expected a real multi-row QR grid");
+        assert!(
+            rendered.lines().count() > 5,
+            "expected a real multi-row QR grid"
+        );
     }
 }

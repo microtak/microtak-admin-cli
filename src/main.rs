@@ -11,7 +11,7 @@ mod enroll;
 mod pdf;
 mod qr;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 use cli::{Cli, Command, DeviceCommand, GroupCommand, MissionCommand, TokenCommand, UserCommand};
@@ -31,7 +31,12 @@ async fn main() -> Result<()> {
 
 async fn run_user_command(command: UserCommand) -> Result<()> {
     match command {
-        UserCommand::Mint { conn, username, password, groups } => {
+        UserCommand::Mint {
+            conn,
+            username,
+            password,
+            groups,
+        } => {
             let client = client::build_client(&conn)?;
             let password =
                 client::mint_user(&client, &conn, &username, password, (&groups).into()).await?;
@@ -58,7 +63,10 @@ fn print_user_table(users: &[client::UserInfo]) {
         println!("No user accounts.");
         return;
     }
-    println!("{:<30} {:<10} {:<20} GROUPS", "USERNAME", "STATUS", "CREATED");
+    println!(
+        "{:<30} {:<10} {:<20} GROUPS",
+        "USERNAME", "STATUS", "CREATED"
+    );
     for user in users {
         let status = if user.revoked { "revoked" } else { "active" };
         println!(
@@ -88,7 +96,9 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             let wants_link = qr || pdf.is_some();
             if wants_link {
                 if cn.is_none() {
-                    bail!("--qr/--pdf need --cn: the token is bound to that device name, which the QR code carries");
+                    bail!(
+                        "--qr/--pdf need --cn: the token is bound to that device name, which the QR code carries"
+                    );
                 }
                 if link.enrollment_url.is_none() {
                     bail!("--qr/--pdf need --enrollment-url: where devices reach the server");
@@ -96,9 +106,15 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             }
             let client = client::build_client(&conn)?;
             let note_for_pdf = note.clone();
-            let token =
-                client::mint_token(&client, &conn, expires_in_secs, note, cn.clone(), (&groups).into())
-                    .await?;
+            let token = client::mint_token(
+                &client,
+                &conn,
+                expires_in_secs,
+                note,
+                cn.clone(),
+                (&groups).into(),
+            )
+            .await?;
             println!("{token}");
             if wants_link {
                 let enrollment_link = qr::EnrollmentLink::from_enrollment_url(
@@ -139,7 +155,13 @@ async fn run_token_command(command: TokenCommand) -> Result<()> {
             println!("Revoked.");
             Ok(())
         }
-        TokenCommand::Pdf { token, cn, link, note, out } => {
+        TokenCommand::Pdf {
+            token,
+            cn,
+            link,
+            note,
+            out,
+        } => {
             let enrollment_url = link
                 .enrollment_url
                 .context("--enrollment-url is required: where devices reach the server")?;
@@ -181,8 +203,16 @@ async fn run_mission_command(command: MissionCommand) -> Result<()> {
                 println!(
                     "{}\t{}\t{}",
                     mission.name,
-                    if mission.creator_uid.is_empty() { "-" } else { &mission.creator_uid },
-                    if mission.groups.is_empty() { "-".to_string() } else { mission.groups.join(", ") }
+                    if mission.creator_uid.is_empty() {
+                        "-"
+                    } else {
+                        &mission.creator_uid
+                    },
+                    if mission.groups.is_empty() {
+                        "-".to_string()
+                    } else {
+                        mission.groups.join(", ")
+                    }
                 );
             }
         }
@@ -264,14 +294,51 @@ fn format_unix(unix_seconds: i64) -> String {
 fn print_mission(mission: &client::Mission, subscriptions: &[client::Subscription]) {
     println!("Name:        {}", mission.name);
     println!("Guid:        {}", mission.guid);
-    println!("Description: {}", if mission.description.is_empty() { "-" } else { &mission.description });
-    println!("Creator:     {}", if mission.creator_uid.is_empty() { "-" } else { &mission.creator_uid });
+    println!(
+        "Description: {}",
+        if mission.description.is_empty() {
+            "-"
+        } else {
+            &mission.description
+        }
+    );
+    println!(
+        "Creator:     {}",
+        if mission.creator_uid.is_empty() {
+            "-"
+        } else {
+            &mission.creator_uid
+        }
+    );
     println!("Groups:      {}", mission.groups.join(", "));
-    println!("Default role: {}", mission.default_role.as_ref().map(|r| r.role.as_str()).unwrap_or("MISSION_SUBSCRIBER (not set)"));
-    println!("Password:    {}", if mission.password_protected { "yes" } else { "no" });
+    println!(
+        "Default role: {}",
+        mission
+            .default_role
+            .as_ref()
+            .map(|r| r.role.as_str())
+            .unwrap_or("MISSION_SUBSCRIBER (not set)")
+    );
+    println!(
+        "Password:    {}",
+        if mission.password_protected {
+            "yes"
+        } else {
+            "no"
+        }
+    );
     println!("Subscriptions:");
     for s in subscriptions {
-        println!("  {}\t{}\t{}", s.client_uid, if s.username.is_empty() { "-" } else { &s.username }, s.role.role);
+        println!(
+            "  {}\t{}\t{}",
+            s.client_uid,
+            if s.username.is_empty() {
+                "-"
+            } else {
+                &s.username
+            },
+            s.role.role
+        );
     }
 }
 
@@ -292,7 +359,10 @@ async fn run_device_command(command: DeviceCommand) -> Result<()> {
             }
             for cert in revocable {
                 client::revoke_certificate(&client, &conn, &cert.hash).await?;
-                println!("Revoked certificate {} of '{name}' ({}).", cert.id, cert.hash);
+                println!(
+                    "Revoked certificate {} of '{name}' ({}).",
+                    cert.id, cert.hash
+                );
             }
             Ok(())
         }
@@ -316,14 +386,21 @@ fn print_certificate_table(certs: &[client::TakCert]) {
         println!("No issued certificates.");
         return;
     }
-    println!("{:<5} {:<24} {:<8} {:<20} {:<24} {:<24} HASH", "ID", "USER", "STATUS", "CLIENT UID", "ISSUED", "EXPIRES");
+    println!(
+        "{:<5} {:<24} {:<8} {:<20} {:<24} {:<24} HASH",
+        "ID", "USER", "STATUS", "CLIENT UID", "ISSUED", "EXPIRES"
+    );
     for cert in certs {
         println!(
             "{:<5} {:<24} {:<8} {:<20} {:<24} {:<24} {}",
             cert.id,
             cert.user_dn,
             cert.status(),
-            if cert.client_uid.is_empty() { "-" } else { &cert.client_uid },
+            if cert.client_uid.is_empty() {
+                "-"
+            } else {
+                &cert.client_uid
+            },
             cert.issuance_date.as_deref().unwrap_or("-"),
             cert.expiration_date.as_deref().unwrap_or("-"),
             cert.hash,
@@ -336,7 +413,10 @@ async fn run_group_command(command: GroupCommand) -> Result<()> {
         GroupCommand::List { conn } => {
             let client = client::build_client(&conn)?;
             let groups = client::list_groups(&client, &conn).await?;
-            println!("{:<24} {:<7} {:<30} MEMBERS", "GROUP", "BITPOS", "DESCRIPTION");
+            println!(
+                "{:<24} {:<7} {:<30} MEMBERS",
+                "GROUP", "BITPOS", "DESCRIPTION"
+            );
             for group in groups {
                 let members = if group.members.is_empty() {
                     "-".to_string()
@@ -344,7 +424,9 @@ async fn run_group_command(command: GroupCommand) -> Result<()> {
                     group
                         .members
                         .iter()
-                        .map(|(identity, direction)| format!("{identity}({})", direction.to_lowercase()))
+                        .map(|(identity, direction)| {
+                            format!("{identity}({})", direction.to_lowercase())
+                        })
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
@@ -358,7 +440,11 @@ async fn run_group_command(command: GroupCommand) -> Result<()> {
             }
             Ok(())
         }
-        GroupCommand::Create { conn, name, description } => {
+        GroupCommand::Create {
+            conn,
+            name,
+            description,
+        } => {
             let client = client::build_client(&conn)?;
             client::create_group(&client, &conn, &name, description).await?;
             println!("Created group '{name}'.");
@@ -370,13 +456,25 @@ async fn run_group_command(command: GroupCommand) -> Result<()> {
             println!("Deleted group '{name}'.");
             Ok(())
         }
-        GroupCommand::SetMember { conn, group, identity, direction } => {
+        GroupCommand::SetMember {
+            conn,
+            group,
+            identity,
+            direction,
+        } => {
             let client = client::build_client(&conn)?;
             client::set_group_member(&client, &conn, &group, &identity, direction).await?;
-            println!("'{identity}' is in '{group}' ({}).", direction.as_api().to_lowercase());
+            println!(
+                "'{identity}' is in '{group}' ({}).",
+                direction.as_api().to_lowercase()
+            );
             Ok(())
         }
-        GroupCommand::RemoveMember { conn, group, identity } => {
+        GroupCommand::RemoveMember {
+            conn,
+            group,
+            identity,
+        } => {
             let client = client::build_client(&conn)?;
             client::remove_group_member(&client, &conn, &group, &identity).await?;
             println!("Removed '{identity}' from '{group}'.");

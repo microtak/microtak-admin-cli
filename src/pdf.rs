@@ -7,8 +7,8 @@
 
 use anyhow::{Context, Result};
 use printpdf::{
-    Mm, Op, ParsedFont, PdfDocument, PdfFontHandle, PdfPage, PdfSaveOptions, Point, Pt,
-    RawImage, RawImageData, RawImageFormat, TextItem, XObjectTransform,
+    Mm, Op, ParsedFont, PdfDocument, PdfFontHandle, PdfPage, PdfSaveOptions, Point, Pt, RawImage,
+    RawImageData, RawImageFormat, TextItem, XObjectTransform,
 };
 use qrcode::{Color, QrCode};
 
@@ -118,7 +118,11 @@ impl Font {
         let mut lines = Vec::new();
         let mut line = String::new();
         for word in text.split_whitespace() {
-            let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            let candidate = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
             if !line.is_empty() && self.width(&candidate, size) > max_width {
                 lines.push(std::mem::replace(&mut line, word.to_string()));
             } else {
@@ -161,9 +165,19 @@ impl Layout {
         self.y -= line_height;
         self.ops.extend([
             Op::StartTextSection,
-            Op::SetFont { font: font.handle.clone(), size: Pt(size) },
-            Op::SetTextCursor { pos: Point { x: Pt(x), y: Pt(self.y + (line_height - size)) } },
-            Op::ShowText { items: vec![TextItem::Text(text.to_string())] },
+            Op::SetFont {
+                font: font.handle.clone(),
+                size: Pt(size),
+            },
+            Op::SetTextCursor {
+                pos: Point {
+                    x: Pt(x),
+                    y: Pt(self.y + (line_height - size)),
+                },
+            },
+            Op::ShowText {
+                items: vec![TextItem::Text(text.to_string())],
+            },
             Op::EndTextSection,
         ]);
     }
@@ -214,7 +228,11 @@ pub fn write_enrollment_pdf(info: &HandoutInfo, out_path: &str) -> Result<()> {
     page.space(BODY_SIZE);
 
     let link = info.link;
-    page.paragraph(&regular, BODY_SIZE, &format!("Device name: {}", link.username));
+    page.paragraph(
+        &regular,
+        BODY_SIZE,
+        &format!("Device name: {}", link.username),
+    );
     page.paragraph(
         &regular,
         BODY_SIZE,
@@ -224,7 +242,11 @@ pub fn write_enrollment_pdf(info: &HandoutInfo, out_path: &str) -> Result<()> {
         ),
     );
     page.paragraph(&regular, BODY_SIZE, &format!("Token: {}", link.token));
-    page.paragraph(&regular, BODY_SIZE, &format!("Expires: {}", info.expires_at));
+    page.paragraph(
+        &regular,
+        BODY_SIZE,
+        &format!("Expires: {}", info.expires_at),
+    );
     if let Some(note) = info.note {
         page.paragraph(&regular, BODY_SIZE, &format!("Note: {note}"));
     }
@@ -262,7 +284,11 @@ pub fn write_enrollment_pdf(info: &HandoutInfo, out_path: &str) -> Result<()> {
     );
     page.space(BODY_SIZE);
 
-    page.paragraph(&bold, 14.0, "Manual enrollment (if you can't scan the QR code)");
+    page.paragraph(
+        &bold,
+        14.0,
+        "Manual enrollment (if you can't scan the QR code)",
+    );
     page.space(BODY_SIZE * 0.4);
     page.ordered_list(
         &regular,
@@ -300,7 +326,8 @@ mod tests {
     #[test]
     fn rasterize_qr_produces_a_real_dark_on_light_code() {
         let (pixels, size) =
-            rasterize_qr("tak://com.atakmap.app/enroll?host=server&username=u&token=abc123").unwrap();
+            rasterize_qr("tak://com.atakmap.app/enroll?host=server&username=u&token=abc123")
+                .unwrap();
         let pixel = |x: u32, y: u32| pixels[(y * size + x) as usize];
 
         // The finder pattern occupies the modules right after the quiet
@@ -317,7 +344,10 @@ mod tests {
     #[test]
     fn expiry_display_covers_all_three_states() {
         assert_eq!(Expiry::Never.to_string(), "never");
-        assert_eq!(Expiry::At("2026-10-01T00:00:00Z".to_string()).to_string(), "2026-10-01T00:00:00Z");
+        assert_eq!(
+            Expiry::At("2026-10-01T00:00:00Z".to_string()).to_string(),
+            "2026-10-01T00:00:00Z"
+        );
         assert!(Expiry::Unknown.to_string().contains("unknown"));
     }
 
@@ -342,7 +372,10 @@ mod tests {
     /// (extractable) text.
     #[test]
     fn handout_is_one_page_with_the_qr_image_and_the_instructions() {
-        let dir = std::env::temp_dir().join(format!("microtak-admin-cli-pdf-parse-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "microtak-admin-cli-pdf-parse-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let out_path = dir.join("handout.pdf");
         let link = sample_link();
@@ -363,15 +396,30 @@ mod tests {
             .values()
             .filter_map(|object| object.as_stream().ok())
             .filter(|stream| {
-                stream.dict.get(b"Subtype").and_then(|s| s.as_name()).ok() == Some(b"Image".as_slice())
+                stream.dict.get(b"Subtype").and_then(|s| s.as_name()).ok()
+                    == Some(b"Image".as_slice())
             })
             .filter_map(|stream| stream.dict.get(b"Width").and_then(|w| w.as_i64()).ok())
             .collect();
-        assert!(widths.contains(&(qr_pixels as i64)), "QR image of {qr_pixels}px expected, images: {widths:?}");
+        assert!(
+            widths.contains(&(qr_pixels as i64)),
+            "QR image of {qr_pixels}px expected, images: {widths:?}"
+        );
 
         // Word spacing differs between PDF writers; compare words only.
-        let text = doc.extract_text(&[1]).unwrap().split_whitespace().collect::<Vec<_>>().join(" ");
-        for needle in ["MicroTAK Device Enrollment", "pixel", "abc123", "microtak.example.com", "Manual enrollment"] {
+        let text = doc
+            .extract_text(&[1])
+            .unwrap()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for needle in [
+            "MicroTAK Device Enrollment",
+            "pixel",
+            "abc123",
+            "microtak.example.com",
+            "Manual enrollment",
+        ] {
             assert!(text.contains(needle), "missing {needle:?} in {text:?}");
         }
         std::fs::remove_dir_all(&dir).unwrap();
@@ -379,7 +427,10 @@ mod tests {
 
     #[test]
     fn write_enrollment_pdf_produces_a_real_pdf_file() {
-        let dir = std::env::temp_dir().join(format!("microtak-admin-cli-pdf-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "microtak-admin-cli-pdf-test-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let out_path = dir.join("handout.pdf");
 
@@ -399,8 +450,14 @@ mod tests {
         write_enrollment_pdf(&info, out_path.to_str().unwrap()).unwrap();
 
         let bytes = std::fs::read(&out_path).unwrap();
-        assert!(bytes.starts_with(b"%PDF-"), "output must be a real PDF file");
-        assert!(bytes.len() > 1000, "a PDF with an embedded QR code image should not be tiny");
+        assert!(
+            bytes.starts_with(b"%PDF-"),
+            "output must be a real PDF file"
+        );
+        assert!(
+            bytes.len() > 1000,
+            "a PDF with an embedded QR code image should not be tiny"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

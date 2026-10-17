@@ -2,7 +2,7 @@
 //! [`crate::cli::AdminConnection`], and the small set of API calls this CLI
 //! needs against MicroTAK's admin/mission-role endpoints.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
@@ -14,8 +14,10 @@ pub fn build_client(conn: &AdminConnection) -> Result<reqwest::Client> {
     identity_pem.extend_from_slice(
         &std::fs::read(&conn.key).with_context(|| format!("reading client key {}", conn.key))?,
     );
-    let identity = reqwest::Identity::from_pem(&identity_pem).context("parsing client cert/key as a TLS identity")?;
-    let ca_pem = std::fs::read(&conn.ca).with_context(|| format!("reading CA certificate {}", conn.ca))?;
+    let identity = reqwest::Identity::from_pem(&identity_pem)
+        .context("parsing client cert/key as a TLS identity")?;
+    let ca_pem =
+        std::fs::read(&conn.ca).with_context(|| format!("reading CA certificate {}", conn.ca))?;
     let ca_cert = reqwest::Certificate::from_pem(&ca_pem).context("parsing CA certificate")?;
 
     let mut builder = reqwest::Client::builder()
@@ -152,7 +154,10 @@ pub async fn mint_token(
         .context("mint response had no 'token' field")
 }
 
-pub async fn list_tokens(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<EnrollmentToken>> {
+pub async fn list_tokens(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+) -> Result<Vec<EnrollmentToken>> {
     let response = client
         .get(format!("{}/Marti/api/admin/enrollmentTokens", conn.server))
         .send()
@@ -162,9 +167,16 @@ pub async fn list_tokens(client: &reqwest::Client, conn: &AdminConnection) -> Re
     response.json().await.context("parsing token list response")
 }
 
-pub async fn revoke_token(client: &reqwest::Client, conn: &AdminConnection, token: &str) -> Result<()> {
+pub async fn revoke_token(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    token: &str,
+) -> Result<()> {
     let response = client
-        .delete(format!("{}/Marti/api/admin/enrollmentTokens/{token}", conn.server))
+        .delete(format!(
+            "{}/Marti/api/admin/enrollmentTokens/{token}",
+            conn.server
+        ))
         .send()
         .await
         .context("calling the admin API to revoke a token")?;
@@ -229,9 +241,17 @@ pub async fn list_users(client: &reqwest::Client, conn: &AdminConnection) -> Res
     response.json().await.context("parsing user list response")
 }
 
-pub async fn revoke_user(client: &reqwest::Client, conn: &AdminConnection, username: &str) -> Result<()> {
+pub async fn revoke_user(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    username: &str,
+) -> Result<()> {
     let response = client
-        .delete(format!("{}/Marti/api/admin/users/{}", conn.server, urlencode(username)))
+        .delete(format!(
+            "{}/Marti/api/admin/users/{}",
+            conn.server,
+            urlencode(username)
+        ))
         .send()
         .await
         .context("calling the admin API to revoke a user")?;
@@ -282,33 +302,62 @@ pub struct Subscription {
 
 /// Every mission, password-protected and role-enabled ones included (the
 /// official list leaves those out unless asked).
-pub async fn list_missions(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<Mission>> {
+pub async fn list_missions(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+) -> Result<Vec<Mission>> {
     let response = client
-        .get(format!("{}/Marti/api/missions?passwordProtected=true&defaultRole=true", conn.server))
+        .get(format!(
+            "{}/Marti/api/missions?passwordProtected=true&defaultRole=true",
+            conn.server
+        ))
         .send()
         .await
         .context("listing missions")?;
     let response = check_status(response).await?;
-    let envelope: Envelope<Vec<Mission>> = response.json().await.context("parsing mission list response")?;
+    let envelope: Envelope<Vec<Mission>> = response
+        .json()
+        .await
+        .context("parsing mission list response")?;
     Ok(envelope.data)
 }
 
-pub async fn get_mission(client: &reqwest::Client, conn: &AdminConnection, name: &str) -> Result<(Mission, Vec<Subscription>)> {
+pub async fn get_mission(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    name: &str,
+) -> Result<(Mission, Vec<Subscription>)> {
     let response = client
-        .get(format!("{}/Marti/api/missions/{}", conn.server, urlencode(name)))
+        .get(format!(
+            "{}/Marti/api/missions/{}",
+            conn.server,
+            urlencode(name)
+        ))
         .send()
         .await
         .context("fetching mission")?;
     let response = check_status(response).await?;
-    let envelope: Envelope<Vec<Mission>> = response.json().await.context("parsing mission response")?;
-    let mission = envelope.data.into_iter().next().context("the server answered no mission")?;
+    let envelope: Envelope<Vec<Mission>> =
+        response.json().await.context("parsing mission response")?;
+    let mission = envelope
+        .data
+        .into_iter()
+        .next()
+        .context("the server answered no mission")?;
     let response = client
-        .get(format!("{}/Marti/api/missions/{}/subscriptions/roles", conn.server, urlencode(name)))
+        .get(format!(
+            "{}/Marti/api/missions/{}/subscriptions/roles",
+            conn.server,
+            urlencode(name)
+        ))
         .send()
         .await
         .context("fetching the mission's subscriptions")?;
     let response = check_status(response).await?;
-    let subscriptions: Envelope<Vec<Subscription>> = response.json().await.context("parsing subscriptions response")?;
+    let subscriptions: Envelope<Vec<Subscription>> = response
+        .json()
+        .await
+        .context("parsing subscriptions response")?;
     Ok((mission, subscriptions.data))
 }
 
@@ -322,11 +371,20 @@ pub async fn set_role(
     uid: &str,
     role: Option<RoleArg>,
 ) -> Result<()> {
-    let mut url = format!("{}/Marti/api/missions/{}/role?clientUid={}", conn.server, urlencode(mission), urlencode(uid));
+    let mut url = format!(
+        "{}/Marti/api/missions/{}/role?clientUid={}",
+        conn.server,
+        urlencode(mission),
+        urlencode(uid)
+    );
     if let Some(role) = role {
         url.push_str(&format!("&role={}", role.official()));
     }
-    let response = client.put(url).send().await.context("setting a mission role")?;
+    let response = client
+        .put(url)
+        .send()
+        .await
+        .context("setting a mission role")?;
     check_status(response).await?;
     Ok(())
 }
@@ -420,7 +478,10 @@ pub struct GroupInfo {
     pub members: std::collections::BTreeMap<String, String>,
 }
 
-pub async fn list_groups(client: &reqwest::Client, conn: &AdminConnection) -> Result<Vec<GroupInfo>> {
+pub async fn list_groups(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+) -> Result<Vec<GroupInfo>> {
     let response = client
         .get(format!("{}/Marti/api/admin/groups", conn.server))
         .send()
@@ -446,9 +507,17 @@ pub async fn create_group(
     Ok(())
 }
 
-pub async fn delete_group(client: &reqwest::Client, conn: &AdminConnection, name: &str) -> Result<()> {
+pub async fn delete_group(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    name: &str,
+) -> Result<()> {
     let response = client
-        .delete(format!("{}/Marti/api/admin/groups/{}", conn.server, urlencode(name)))
+        .delete(format!(
+            "{}/Marti/api/admin/groups/{}",
+            conn.server,
+            urlencode(name)
+        ))
         .send()
         .await
         .context("calling the admin API to delete a group")?;
@@ -517,7 +586,10 @@ mod group_tests {
             groups: GroupLists::from(&args),
         })
         .unwrap();
-        assert_eq!(json, serde_json::json!({"username": "u", "groups": ["Red"], "groupsOut": ["Blue"]}));
+        assert_eq!(
+            json,
+            serde_json::json!({"username": "u", "groups": ["Red"], "groupsOut": ["Blue"]})
+        );
         let empty = serde_json::to_value(MintUserRequest {
             username: "u".into(),
             password: None,
@@ -530,8 +602,14 @@ mod group_tests {
     #[test]
     fn describe_grants_is_short_and_readable() {
         let grants = vec![
-            GroupGrant { name: "Red".into(), membership: "BOTH".into() },
-            GroupGrant { name: "Blue".into(), membership: "OUT".into() },
+            GroupGrant {
+                name: "Red".into(),
+                membership: "BOTH".into(),
+            },
+            GroupGrant {
+                name: "Blue".into(),
+                membership: "OUT".into(),
+            },
         ];
         assert_eq!(describe_grants(&grants), "Red, Blue(out)");
         assert_eq!(describe_grants(&[]), "-");
@@ -562,7 +640,11 @@ pub struct TakCert {
 
 impl TakCert {
     pub fn status(&self) -> &'static str {
-        if self.revocation_date.is_some() { "revoked" } else { "valid" }
+        if self.revocation_date.is_some() {
+            "revoked"
+        } else {
+            "valid"
+        }
     }
 }
 
@@ -582,15 +664,27 @@ pub async fn list_certificates(
     if let Some(user) = username {
         url.push_str(&format!("?username={}", urlencode(user)));
     }
-    let response = client.get(url).send().await.context("calling the certificate admin API")?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .context("calling the certificate admin API")?;
     let body: ApiResponse<Vec<TakCert>> = check_status(response).await?.json().await?;
     Ok(body.data)
 }
 
 /// Revoke one certificate by its hash (official `DELETE /certadmin/cert/{hash}`).
-pub async fn revoke_certificate(client: &reqwest::Client, conn: &AdminConnection, hash: &str) -> Result<()> {
+pub async fn revoke_certificate(
+    client: &reqwest::Client,
+    conn: &AdminConnection,
+    hash: &str,
+) -> Result<()> {
     let response = client
-        .delete(format!("{}/Marti/api/certadmin/cert/{}", conn.server, urlencode(hash)))
+        .delete(format!(
+            "{}/Marti/api/certadmin/cert/{}",
+            conn.server,
+            urlencode(hash)
+        ))
         .send()
         .await
         .context("calling the certificate admin API to revoke a certificate")?;
@@ -601,7 +695,10 @@ pub async fn revoke_certificate(client: &reqwest::Client, conn: &AdminConnection
 /// The certificates a `device revoke-cert <name>` revokes: the user's
 /// not-yet-revoked ones.
 pub fn revocable<'a>(certs: &'a [TakCert], user: &str) -> Vec<&'a TakCert> {
-    certs.iter().filter(|c| c.user_dn == user && c.revocation_date.is_none()).collect()
+    certs
+        .iter()
+        .filter(|c| c.user_dn == user && c.revocation_date.is_none())
+        .collect()
 }
 
 /// Block (`blocked = true`) or unblock an identity -- MicroTAK extension,
@@ -612,8 +709,16 @@ pub async fn set_device_blocked(
     name: &str,
     blocked: bool,
 ) -> Result<()> {
-    let url = format!("{}/Marti/api/admin/devices/{}/block", conn.server, urlencode(name));
-    let request = if blocked { client.put(url) } else { client.delete(url) };
+    let url = format!(
+        "{}/Marti/api/admin/devices/{}/block",
+        conn.server,
+        urlencode(name)
+    );
+    let request = if blocked {
+        client.put(url)
+    } else {
+        client.delete(url)
+    };
     let response = request
         .send()
         .await

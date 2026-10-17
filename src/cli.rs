@@ -393,7 +393,16 @@ mod device_cli_tests {
     fn parse(args: &[&str]) -> Command {
         let mut full = vec!["microtak-admin-cli", "device"];
         full.extend_from_slice(args);
-        full.extend_from_slice(&["--server", "https://s:8443", "--cert", "c", "--key", "k", "--ca", "a"]);
+        full.extend_from_slice(&[
+            "--server",
+            "https://s:8443",
+            "--cert",
+            "c",
+            "--key",
+            "k",
+            "--ca",
+            "a",
+        ]);
         Cli::try_parse_from(full).unwrap().command
     }
 
@@ -401,7 +410,9 @@ mod device_cli_tests {
     fn device_subcommands_parse() {
         assert!(matches!(
             parse(&["list"]),
-            Command::Device { command: DeviceCommand::List { .. } }
+            Command::Device {
+                command: DeviceCommand::List { .. }
+            }
         ));
         assert!(matches!(
             parse(&["revoke-cert", "alice"]),

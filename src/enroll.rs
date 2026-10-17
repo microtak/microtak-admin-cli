@@ -4,7 +4,7 @@
 //! own CA), or the system roots if it has a publicly-trusted certificate;
 //! verification is never skipped.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 
 use crate::cli::EnrollArgs;
@@ -13,8 +13,7 @@ fn build_csr(common_name: &str) -> Result<(String, KeyPair)> {
     let key = KeyPair::generate().context("generating a keypair")?;
     let mut dn = DistinguishedName::new();
     dn.push(DnType::CommonName, common_name);
-    let mut params =
-        CertificateParams::new(Vec::<String>::new()).context("building CSR params")?;
+    let mut params = CertificateParams::new(Vec::<String>::new()).context("building CSR params")?;
     params.distinguished_name = dn;
     let csr = params.serialize_request(&key).context("serializing CSR")?;
     Ok((csr.pem().context("PEM-encoding CSR")?, key))
@@ -44,7 +43,10 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
         bail!("enrollment failed ({status}): {body}");
     }
 
-    let body: serde_json::Value = response.json().await.context("parsing enrollment response")?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .context("parsing enrollment response")?;
     let bare_cert = body["signedCert"]
         .as_str()
         .context("enrollment response had no 'signedCert' field")?;
@@ -55,7 +57,8 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
                 .as_str()
                 .context("enrollment response had no 'ca0' field")?,
         );
-        std::fs::write(out_ca, ca_pem).with_context(|| format!("writing CA certificate to {out_ca}"))?;
+        std::fs::write(out_ca, ca_pem)
+            .with_context(|| format!("writing CA certificate to {out_ca}"))?;
     }
 
     std::fs::write(&args.out_cert, &cert_pem)
@@ -72,9 +75,7 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
 
 fn require_https(url: &str) -> Result<()> {
     if !url.to_ascii_lowercase().starts_with("https://") {
-        bail!(
-            "the enrollment endpoint is HTTPS only -- use an https:// URL (got '{url}')"
-        );
+        bail!("the enrollment endpoint is HTTPS only -- use an https:// URL (got '{url}')");
     }
     Ok(())
 }
@@ -83,7 +84,8 @@ fn enrollment_client(args: &EnrollArgs) -> Result<reqwest::Client> {
     require_https(&args.enrollment_url)?;
     let mut builder = reqwest::Client::builder().https_only(true);
     if let Some(ca_path) = &args.ca {
-        let ca_pem = std::fs::read(ca_path).with_context(|| format!("reading CA certificate {ca_path}"))?;
+        let ca_pem =
+            std::fs::read(ca_path).with_context(|| format!("reading CA certificate {ca_path}"))?;
         let ca_cert = reqwest::Certificate::from_pem(&ca_pem)
             .with_context(|| format!("parsing CA certificate {ca_path}"))?;
         builder = builder.add_root_certificate(ca_cert);
@@ -98,9 +100,7 @@ fn enrollment_client(args: &EnrollArgs) -> Result<reqwest::Client> {
 /// Just enough percent-encoding for a token's own character set (hex
 /// digits) -- not a general-purpose URL encoder.
 fn urlencoding_minimal(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect()
+    s.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
 }
 
 /// Re-armor a bare-base64 `signedCert` value into full PEM. Real Marti
