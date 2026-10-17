@@ -12,8 +12,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
-genpdf = { version = "0.2", features = ["images"] }
-image = "0.23"
+# No default features: the default `html` feature pulls in a whole layout
+# engine; plain text + one raw image is all a handout needs.
+printpdf = { version = "0.12", default-features = false }
 qrcode = { version = "0.14", default-features = false }
 rcgen = "0.14"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -21,3 +22,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = { version = "0.3", features = ["formatting"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+# Only to inspect generated handouts in tests.
+lopdf = "0.45"
