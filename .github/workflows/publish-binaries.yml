@@ -47,19 +47,40 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
+          path: microtak-admin-cli
+
+      # tests/cli.rs's path dependency (../microtak-server) must exist even
+      # for a plain build. Check out exactly the server version Cargo.lock
+      # records (its release tag), so `--locked` holds and the release build
+      # is reproducible -- not whatever microtak-server's main is today.
+      - name: Find the locked microtak-server version
+        id: server
+        working-directory: microtak-admin-cli
+        run: |
+          version=$(awk '/^name = "microtak-server"$/ { getline; gsub(/"/, "", $3); print $3; exit }' Cargo.lock)
+          test -n "$version" || { echo "microtak-server not found in Cargo.lock" >&2; exit 1; }
+          echo "ref=v$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: microtak/microtak-server
+          ref: ${{ steps.server.outputs.ref }}
+          path: microtak-server
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
+        working-directory: microtak-admin-cli
         run: cargo build --release --locked
 
       - name: Package
+        working-directory: microtak-admin-cli
         run: tar czf "$ARCHIVE" -C target/release microtak-admin-cli
 
       # `gh` finds draft releases by tag (the REST "get release by tag"
       # endpoint, which some upload actions rely on, doesn't return drafts).
       - name: Upload to the draft release
-        run: gh release upload "$TAG" "$ARCHIVE" --clobber
+        run: gh release upload "$TAG" "microtak-admin-cli/$ARCHIVE" --clobber
 
   publish:
     needs: build

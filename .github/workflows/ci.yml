@@ -14,7 +14,19 @@ jobs:
     name: Build, test, and lint
     runs-on: ubuntu-latest
     steps:
+      # tests/cli.rs has a [dev-dependencies] path dependency on a sibling
+      # ../microtak-server checkout (see README.md "Building") -- even a
+      # plain `cargo build` needs it present to resolve the manifest, not
+      # just the test binary. Check both out under one $GITHUB_WORKSPACE so
+      # the relative path lines up the same way it does in local dev.
       - uses: actions/checkout@v4
+        with:
+          path: microtak-admin-cli
+
+      - uses: actions/checkout@v4
+        with:
+          repository: microtak/microtak-server
+          path: microtak-server
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -23,17 +35,34 @@ jobs:
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: microtak-admin-cli
+
+      # CI tests against microtak-server's *current* main on purpose (to
+      # catch API breaks early), while Cargo.lock records the server version
+      # of the last lock refresh. A server release bumps that version -- and
+      # possibly its dependencies -- which alone would make `--locked` fail
+      # here. Re-resolve just the path dependency first; everything else
+      # stays locked. Release builds pin the exact locked server version
+      # instead (publish-binaries.yml).
+      - name: Sync the microtak-server path dependency
+        working-directory: microtak-admin-cli
+        run: cargo update -p microtak-server
 
       - name: Build
+        working-directory: microtak-admin-cli
         run: cargo build --tests --locked
 
       - name: Test
+        working-directory: microtak-admin-cli
         run: cargo test --locked
 
       - name: Format
+        working-directory: microtak-admin-cli
         run: cargo fmt --check
 
       - name: Clippy
+        working-directory: microtak-admin-cli
         run: cargo clippy --all-targets --locked -- -D warnings
 
   # Line/region coverage of the whole test suite (cargo-llvm-cov): the
@@ -43,6 +72,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: microtak-admin-cli
+
+      - uses: actions/checkout@v4
+        with:
+          repository: microtak/microtak-server
+          path: microtak-server
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -51,23 +87,31 @@ jobs:
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: microtak-admin-cli
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov@0.6.21
 
+      - name: Sync the microtak-server path dependency
+        working-directory: microtak-admin-cli
+        run: cargo update -p microtak-server
+
       - name: Run the tests with coverage
+        working-directory: microtak-admin-cli
         run: cargo llvm-cov --locked --no-report
 
       - name: Report
+        working-directory: microtak-admin-cli
         run: |
-          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --ignore-filename-regex 'microtak-server/' --lcov --output-path lcov.info
           {
             echo '## Code coverage'
             echo
             echo '```'
-            cargo llvm-cov report --summary-only
+            cargo llvm-cov report --ignore-filename-regex 'microtak-server/' --summary-only
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -75,4 +119,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
-          path: lcov.info
+          path: microtak-admin-cli/lcov.info

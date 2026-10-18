@@ -18,6 +18,11 @@ Usage: scripts/build.sh [options]
 
 With no -b/-t/-c given, all three run (this is the default: same coverage
 as CI's "Build, test, and lint" job).
+
+tests/cli.rs has a [dev-dependencies] path dependency on a sibling
+../microtak-server checkout (it runs the CLI against a real
+microtak_server::app::App) -- even a plain build needs that checkout
+present to resolve the manifest. See README.md "Building".
 EOF
 }
 
@@ -42,6 +47,14 @@ done
 
 if [ "$do_build" -eq 0 ] && [ "$do_test" -eq 0 ] && [ "$do_clippy" -eq 0 ]; then
   do_build=1; do_test=1; do_clippy=1
+fi
+
+if [ ! -d ../microtak-server ]; then
+  echo "error: tests/cli.rs depends on a sibling ../microtak-server checkout" >&2
+  echo "  (a [dev-dependencies] path dependency), which is missing." >&2
+  echo "  clone it next to this repo:" >&2
+  echo "    git clone https://github.com/microtak/microtak-server ../microtak-server" >&2
+  exit 1
 fi
 
 release_flag=()
