@@ -227,6 +227,12 @@ and the role new subscribers get.
 Only the mission's owner (or the server's admin) can change roles; any
 other caller gets the server's error and a non-zero exit code.
 
+As on the official server, roles can only be set on missions created with
+a default role (ATAK sets one; otherwise the server answers `400 Invalid
+Request`), and on a mission without a password no one can be given less
+than its default role: `readonly-subscriber` needs a password-protected
+mission or a read-only default role (`403 validateRoleAssignment failed`).
+
 ## Managing groups ("channels")
 
 Groups decide who receives what, as on the official TAK Server: a device
