@@ -26,9 +26,9 @@ Vulnerabilities in microtak-server itself go to
 
 In scope: this tool's handling of credentials and server responses.
 Protecting the admin key files on your own machine is up to you; keep
-them owner-only (`chmod 600`; `enroll` writes the key with your default
-umask).
+them owner-only (`chmod 600`).
 
+- `enroll` writes the private key owner-only (0600 on Unix).
 - The server is always verified, against `--ca` or the system roots;
   `http://` URLs are refused, and there is no option to skip
   verification.
