@@ -63,7 +63,7 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
 
     std::fs::write(&args.out_cert, &cert_pem)
         .with_context(|| format!("writing certificate to {}", args.out_cert))?;
-    std::fs::write(&args.out_key, key.serialize_pem())
+    write_private(&args.out_key, key.serialize_pem().as_bytes())
         .with_context(|| format!("writing key to {}", args.out_key))?;
 
     println!(
@@ -71,6 +71,28 @@ pub async fn run(args: EnrollArgs) -> Result<()> {
         args.cn, args.out_cert, args.out_key
     );
     Ok(())
+}
+
+/// Writes a private key readable by its owner only (0600 on Unix), also
+/// tightening a file that already exists.
+fn write_private(path: &str, contents: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        file.write_all(contents)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents)
+    }
 }
 
 fn require_https(url: &str) -> Result<()> {
@@ -115,6 +137,24 @@ fn wrap_pem_certificate(bare_base64: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn private_keys_are_written_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("microtak-enroll-key-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.key");
+        write_private(path.to_str().unwrap(), b"new key").unwrap();
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&path), 0o600);
+        // An existing, wider file is tightened, not just overwritten.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(path.to_str().unwrap(), b"replaced").unwrap();
+        assert_eq!(mode(&path), 0o600);
+        assert_eq!(std::fs::read(&path).unwrap(), b"replaced");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn refuses_plain_http_enrollment_urls() {
