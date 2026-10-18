@@ -25,17 +25,26 @@ The binary is named `microtak-admin-cli`.
 `scripts/build.sh` runs the same build/test/clippy steps CI does (add
 `--nix` to also run `nix flake check`); see `scripts/build.sh --help`.
 
+`tests/cli.rs` runs the real binary against a real microtak-server, started
+in-process from a sibling checkout (a `[dev-dependencies]` path
+dependency; the CLI itself only talks to the server over HTTP). Clone it
+next to this repo first:
+
+```sh
+git clone https://github.com/microtak/microtak-server ../microtak-server
+```
+
 ### Coverage
 
 ```sh
 cargo install cargo-llvm-cov --locked   # once; needs `rustup component add llvm-tools-preview`
-cargo llvm-cov --open
-cargo llvm-cov --summary-only
+cargo llvm-cov --ignore-filename-regex 'microtak-server/' --open
+cargo llvm-cov --ignore-filename-regex 'microtak-server/' --summary-only
 ```
 
 CI's **Code coverage** job runs the same on every push and pull request:
 the per-file table is in the run's summary, `lcov.info` is attached as the
-`coverage-lcov` artifact. On 2026-10-17: 41.7 % of lines; the HTTP client, `enroll` and `main.rs` have little coverage so far.
+`coverage-lcov` artifact. On 2026-10-18: 92.1 % of lines (the sibling microtak-server crate is left out of the report).
 
 ## Enrolling a device
 
