@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.1](https://github.com/microtak/microtak-admin-cli/compare/v0.4.0...v0.4.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **enroll:** write the private key owner-only ([3ab0ba5](https://github.com/microtak/microtak-admin-cli/commit/3ab0ba561383281f7b9045006f25ae79669cf474))
+
+
+### Documentation
+
+* code coverage in the README ([5fc0941](https://github.com/microtak/microtak-admin-cli/commit/5fc09410e008537be5e6c06e43842ce386c012e9))
+* e2e test setup and current coverage ([af22928](https://github.com/microtak/microtak-admin-cli/commit/af2292862b66ea71513b729168c002fe5c09c6b9))
+* enroll writes the key owner-only ([fdec130](https://github.com/microtak/microtak-admin-cli/commit/fdec130a4f014b21827dc6b23aceddfb8392c005))
+* when mission roles can be set ([c27e6a3](https://github.com/microtak/microtak-admin-cli/commit/c27e6a3b4c6081cbaff0c55d11939a6d0fab2df4))
+
 ## [0.4.0](https://github.com/microtak/microtak-admin-cli/compare/v0.3.0...v0.4.0) (2026-10-17)
 
 
