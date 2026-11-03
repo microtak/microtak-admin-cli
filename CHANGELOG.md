@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.1](https://github.com/microtak/microtak-admin-cli/compare/v0.4.0...v0.4.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **deps:** bump tokio, rustls-webpki, webpki-roots and ctutils ([#12](https://github.com/microtak/microtak-admin-cli/issues/12)) ([b0d0cc0](https://github.com/microtak/microtak-admin-cli/commit/b0d0cc029d5d86bbbe9d8c03f376203a36da8a83))
+* **enroll:** write the private key owner-only ([3ab0ba5](https://github.com/microtak/microtak-admin-cli/commit/3ab0ba561383281f7b9045006f25ae79669cf474))
+* **nix:** make the flake build on its own ([#11](https://github.com/microtak/microtak-admin-cli/issues/11)) ([17b4ca1](https://github.com/microtak/microtak-admin-cli/commit/17b4ca1e4c1e6e21a5f093210360e765f4b232b1))
+
+
+### Documentation
+
+* code coverage in the README ([5fc0941](https://github.com/microtak/microtak-admin-cli/commit/5fc09410e008537be5e6c06e43842ce386c012e9))
+* e2e test setup and current coverage ([af22928](https://github.com/microtak/microtak-admin-cli/commit/af2292862b66ea71513b729168c002fe5c09c6b9))
+* enroll writes the key owner-only ([fdec130](https://github.com/microtak/microtak-admin-cli/commit/fdec130a4f014b21827dc6b23aceddfb8392c005))
+* when mission roles can be set ([c27e6a3](https://github.com/microtak/microtak-admin-cli/commit/c27e6a3b4c6081cbaff0c55d11939a6d0fab2df4))
+
 ## [0.4.0](https://github.com/microtak/microtak-admin-cli/compare/v0.3.0...v0.4.0) (2026-10-17)
 
 
