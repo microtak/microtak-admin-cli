@@ -30,7 +30,16 @@
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
-          src = craneLib.cleanCargoSource ./.;
+          # cleanCargoSource keeps only Rust/Cargo files; the handout PDF's fonts
+          # (assets/fonts/*.ttf) are include_bytes!'d into the binary, so keep
+          # assets/ too.
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            name = "source";
+            filter =
+              path: type:
+              (craneLib.filterCargoSources path type) || (builtins.match ".*/assets(/.*)?$" path != null);
+          };
 
           commonArgs = {
             inherit src;
@@ -43,6 +52,27 @@
               pkgs.darwin.apple_sdk.frameworks.Security
               pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
             ];
+            # Cargo.toml has a [dev-dependencies] path dependency on a sibling
+            # ../microtak-server checkout (only tests/cli.rs uses it). Even a
+            # plain `cargo build` resolves the whole manifest, so the path has
+            # to exist, at the version Cargo.lock records -- a stub crate does
+            # it without pulling the real server into the build. The stub has
+            # none of the real crate's dependencies, so cargo drops those from
+            # the lock: build --offline rather than --locked (every crate is
+            # still the one Cargo.lock pins, vendored from it; nothing is fetched).
+            cargoExtraArgs = "--offline";
+            postUnpack = ''
+              mkdir -p "$NIX_BUILD_TOP/microtak-server/src"
+              cat > "$NIX_BUILD_TOP/microtak-server/Cargo.toml" <<'EOF'
+              [package]
+              name = "microtak-server"
+              version = "0.10.0"
+              edition = "2021"
+              [lib]
+              path = "src/lib.rs"
+              EOF
+              : > "$NIX_BUILD_TOP/microtak-server/src/lib.rs"
+            '';
           };
 
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -52,7 +82,7 @@
             // {
               inherit cargoArtifacts;
               pname = "microtak-admin-cli";
-              cargoExtraArgs = "--locked --bin microtak-admin-cli";
+              cargoExtraArgs = "--offline --bin microtak-admin-cli";
               doCheck = false; # see `checks.test` below -- run once, not twice
             }
           );
@@ -71,13 +101,13 @@
           checks = {
             inherit microtak-admin-cli;
 
-            test = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
-
+            # Lib and bin only: the tests and --all-targets need the real
+            # server crate (see postUnpack above), so tests/cli.rs stays in CI.
             clippy = craneLib.cargoClippy (
               commonArgs
               // {
                 inherit cargoArtifacts;
-                cargoClippyExtraArgs = "--all-targets -- -D warnings";
+                cargoClippyExtraArgs = "--bins -- -D warnings";
               }
             );
           };
